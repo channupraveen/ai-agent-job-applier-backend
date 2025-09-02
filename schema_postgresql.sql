@@ -203,12 +203,11 @@ CREATE INDEX IF NOT EXISTS idx_user_profiles_auth_provider ON user_profiles(auth
 -- INITIAL DATA
 -- ===================================
 
--- Insert default user profile (with authentication)
+-- Insert default user profile (with authentication) - let ID auto-increment
 INSERT INTO user_profiles (
-    id, name, email, password_hash, current_title, experience_years, 
+    name, email, password_hash, current_title, experience_years, 
     skills, auto_apply_enabled, max_applications_per_day, auth_provider
 ) VALUES (
-    1, 
     'Demo User', 
     'demo@example.com', 
     '$2b$12$dummy.hash.for.demo.user.only',
@@ -220,19 +219,21 @@ INSERT INTO user_profiles (
     'email'
 ) ON CONFLICT (email) DO NOTHING;
 
--- Insert default search criteria
+-- Insert default search criteria - reference the demo user by email
 INSERT INTO job_search_criteria (
-    id, user_profile_id, keywords, job_types, experience_levels, 
+    user_profile_id, keywords, job_types, experience_levels, 
     locations, remote_allowed
-) VALUES (
-    1,
-    1,
+) 
+SELECT 
+    up.id,
     'python developer, software engineer, backend developer, full stack developer',
     '["full-time", "contract"]',
     '["mid-level", "senior"]',
     '["Remote", "Hyderabad", "Bangalore", "Mumbai", "Delhi"]',
     TRUE
-) ON CONFLICT DO NOTHING;
+FROM user_profiles up 
+WHERE up.email = 'demo@example.com'
+AND NOT EXISTS (SELECT 1 FROM job_search_criteria WHERE user_profile_id = up.id);
 
 -- Insert some common companies to avoid (optional)
 INSERT INTO company_blacklist (company_name, reason) VALUES 

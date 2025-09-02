@@ -43,15 +43,16 @@ def verify_token(token: str) -> dict:
     """Verify and decode a JWT token"""
     try:
         payload = jwt.decode(token, config.SECRET_KEY, algorithms=[config.ALGORITHM])
-        user_id: int = payload.get("sub")
+        user_id: str = payload.get("sub")
         if user_id is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication credentials",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        return {"user_id": user_id}
-    except JWTError:
+        # Convert string user_id to integer for database query
+        return {"user_id": int(user_id)}
+    except (JWTError, ValueError):  # Added ValueError for int conversion
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
