@@ -4,7 +4,8 @@ Authentication API routes for AI Job Application Agent
 
 from fastapi import APIRouter, HTTPException, status, Depends, Form
 from fastapi.security import HTTPBearer
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, field_validator
+import re
 from typing import Optional
 from datetime import datetime, timedelta
 # Temporarily commented out OAuth imports
@@ -23,14 +24,28 @@ auth_router = APIRouter()
 # Pydantic models for authentication
 class UserRegister(BaseModel):
     name: str
-    email: EmailStr
+    email: str
     password: str
     current_title: Optional[str] = None
     experience_years: Optional[int] = None
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v):
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
+            raise ValueError('Invalid email format')
+        return v
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str
     password: str
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v):
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
+            raise ValueError('Invalid email format')
+        return v
 
 class Token(BaseModel):
     access_token: str

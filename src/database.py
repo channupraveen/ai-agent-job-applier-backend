@@ -18,16 +18,12 @@ def init_database():
     try:
         if db_url.startswith('postgresql'):
             # PostgreSQL setup
-            import psycopg2
+            import psycopg
             from urllib.parse import urlparse
             
             result = urlparse(db_url)
-            conn = psycopg2.connect(
-                database=result.path[1:],
-                user=result.username,
-                password=result.password,
-                host=result.hostname,
-                port=result.port
+            conn = psycopg.connect(
+                f"dbname={result.path[1:]} user={result.username} password={result.password} host={result.hostname} port={result.port}"
             )
             cursor = conn.cursor()
             schema_path = os.path.join(os.path.dirname(__file__), '..', 'schema_postgresql.sql')
@@ -86,16 +82,12 @@ def check_database():
     try:
         if db_url.startswith('postgresql'):
             # PostgreSQL check
-            import psycopg2
+            import psycopg
             from urllib.parse import urlparse
             
             result = urlparse(db_url)
-            conn = psycopg2.connect(
-                database=result.path[1:],
-                user=result.username,
-                password=result.password,
-                host=result.hostname,
-                port=result.port
+            conn = psycopg.connect(
+                f"dbname={result.path[1:]} user={result.username} password={result.password} host={result.hostname} port={result.port}"
             )
             cursor = conn.cursor()
             cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public';")
@@ -144,16 +136,12 @@ def reset_database():
     try:
         if db_url.startswith('postgresql'):
             # PostgreSQL reset
-            import psycopg2
+            import psycopg
             from urllib.parse import urlparse
             
             result = urlparse(db_url)
-            conn = psycopg2.connect(
-                database=result.path[1:],
-                user=result.username,
-                password=result.password,
-                host=result.hostname,
-                port=result.port
+            conn = psycopg.connect(
+                f"dbname={result.path[1:]} user={result.username} password={result.password} host={result.hostname} port={result.port}"
             )
             cursor = conn.cursor()
             

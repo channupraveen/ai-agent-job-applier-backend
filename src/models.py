@@ -103,6 +103,8 @@ class ApplicationSession(Base):
 def create_database(database_url: str = None):
     if database_url is None:
         database_url = config.DATABASE_URL
+    
+    print(f"DEBUG: Using database URL: {database_url}")
     engine = create_engine(database_url)
     Base.metadata.create_all(bind=engine)
     return engine

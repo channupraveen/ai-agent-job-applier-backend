@@ -3,6 +3,10 @@ Configuration file for AI Job Application Agent
 """
 
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 class Config:
     # Authentication Configuration
@@ -23,8 +27,8 @@ class Config:
     # AI Configuration
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
     
-    # Database configuration - SQLite for development
-    DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///job_applications.db')
+    # Database configuration - PostgreSQL for production
+    DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/job_applier_db')
     
     # Automation settings
     AUTO_APPLY = os.getenv('AUTO_APPLY', 'False').lower() == 'true'
