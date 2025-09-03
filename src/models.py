@@ -114,3 +114,11 @@ def get_session(engine=None):
         engine = create_engine(config.DATABASE_URL)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return SessionLocal()
+
+def get_job_db():
+    """Get database session for job operations"""
+    db = get_session()
+    try:
+        yield db
+    finally:
+        db.close()
