@@ -7,6 +7,9 @@ from fastapi import FastAPI
 import uvicorn
 from src.api import router
 from src.auth_routes import auth_router
+from src.job_routes import router as job_router
+from src.resume_routes import router as resume_router
+from src.cover_letter_routes import cover_letter_router
 from src.database import init_database, check_database
 
 # Create FastAPI app
@@ -34,6 +37,9 @@ async def startup_event():
 # Include API routes
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(router, prefix="/api/v1", tags=["Job Application"])
+app.include_router(job_router, prefix="/api/v1", tags=["Job Search & Discovery"])
+app.include_router(resume_router, prefix="/api/v1", tags=["Resume Management"])
+app.include_router(cover_letter_router, prefix="/api/v1", tags=["Cover Letters"])
 
 @app.get("/")
 async def root():

@@ -12,8 +12,8 @@ import json
 import re
 from urllib.parse import urlparse
 
-from models import get_job_db, UserProfile as User
-from auth import get_current_user
+from .models import get_job_db, UserProfile as User
+from .auth import get_current_user
 
 router = APIRouter(tags=["Job Search & Discovery"])
 

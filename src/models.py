@@ -81,6 +81,34 @@ class CoverLetter(Base):
     id = Column(Integer, primary_key=True, index=True)
     job_application_id = Column(Integer)
     content = Column(Text, nullable=False)
+    ai_generated = Column(Boolean, default=True)
+    template_used = Column(String(100))
+    customization_notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class CoverLetterTemplate(Base):
+    __tablename__ = "cover_letter_templates"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text)
+    content_template = Column(Text, nullable=False)
+    category = Column(String(50))  # professional, creative, technical, startup
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class ResumeVersion(Base):
+    __tablename__ = "resume_versions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False)
+    job_id = Column(Integer)  # If customized for specific job
+    version_name = Column(String(100), nullable=False)
+    customized_skills = Column(Text)  # JSON array
+    customized_experience = Column(Text)  # JSON array
+    match_score = Column(Integer)
+    file_path = Column(String(500))
+    is_base_version = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class ApplicationSession(Base):
