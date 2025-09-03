@@ -18,7 +18,7 @@ def init_database():
     try:
         if db_url.startswith('postgresql'):
             # PostgreSQL setup
-            import psycopg
+            import psycopg2 as psycopg
             from urllib.parse import urlparse
             
             result = urlparse(db_url)
@@ -82,7 +82,7 @@ def check_database():
     try:
         if db_url.startswith('postgresql'):
             # PostgreSQL check
-            import psycopg
+            import psycopg2 as psycopg
             from urllib.parse import urlparse
             
             result = urlparse(db_url)
@@ -136,7 +136,7 @@ def reset_database():
     try:
         if db_url.startswith('postgresql'):
             # PostgreSQL reset
-            import psycopg
+            import psycopg2 as psycopg
             from urllib.parse import urlparse
             
             result = urlparse(db_url)
