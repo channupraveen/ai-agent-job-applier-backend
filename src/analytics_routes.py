@@ -11,13 +11,16 @@ from .models import UserProfile
 
 analytics_router = APIRouter()
 
+# Alias for import compatibility
+router = analytics_router
+
 class DashboardStats(BaseModel):
     total_applications: int
     success_rate: float
     interviews_scheduled: int
     offers_received: int
 
-@analytics_router.get("/analytics/dashboard")
+@router.get("/analytics/dashboard")
 async def get_dashboard_stats(
     current_user: UserProfile = Depends(get_current_user)
 ):
@@ -30,7 +33,7 @@ async def get_dashboard_stats(
         "offers_received": 0
     }
 
-@analytics_router.get("/analytics/success-rate")
+@router.get("/analytics/success-rate")
 async def get_success_rate(
     current_user: UserProfile = Depends(get_current_user)
 ):
@@ -38,7 +41,7 @@ async def get_success_rate(
     # TODO: Implement success rate calculation
     return {"success_rate": 0.0, "period": "last_30_days"}
 
-@analytics_router.get("/analytics/trends")
+@router.get("/analytics/trends")
 async def get_job_trends(
     current_user: UserProfile = Depends(get_current_user)
 ):
@@ -46,7 +49,7 @@ async def get_job_trends(
     # TODO: Implement market trends analysis
     return {"trends": [], "user_profile": current_user.current_title}
 
-@analytics_router.get("/analytics/export")
+@router.get("/analytics/export")
 async def export_analytics(
     format: str = "csv",
     current_user: UserProfile = Depends(get_current_user)

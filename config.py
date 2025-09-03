@@ -9,7 +9,10 @@ class Config:
     """Application configuration"""
     
     # Database Configuration
-    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://username:password@localhost/job_applier_db")
+    DATABASE_URL = os.getenv(
+        "DATABASE_URL", 
+        "postgresql://postgres:1234@localhost:5432/job_applier_db"  # Updated with correct password
+    )
     
     # API Keys
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -32,9 +35,16 @@ class Config:
     MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
     ALLOWED_RESUME_TYPES = [".pdf", ".docx", ".doc", ".txt"]
     
-    # Application Settings
-    MAX_APPLICATIONS_PER_DAY = int(os.getenv("MAX_APPLICATIONS_PER_DAY", "50"))
-    DEFAULT_DELAY_BETWEEN_APPLICATIONS = int(os.getenv("DEFAULT_DELAY", "30"))  # seconds
+    # Job Search Parameters (from environment or defaults)
+    KEYWORDS = os.getenv("JOB_KEYWORDS", "python developer,software engineer,data scientist")
+    LOCATION = os.getenv("JOB_LOCATION", "remote")
+    EXPERIENCE_LEVEL = os.getenv("EXPERIENCE_LEVEL", "mid-level")
+    
+    # Automation Settings
+    AUTO_APPLY = os.getenv("AUTO_APPLY", "False").lower() == "true"
+    MAX_APPLICATIONS_PER_DAY = int(os.getenv("MAX_APPLICATIONS_PER_DAY", "10"))
+    BROWSER_HEADLESS = os.getenv("HEADLESS_BROWSER", "True").lower() == "true"
+    BROWSER_TIMEOUT = int(os.getenv("BROWSER_TIMEOUT", "30"))
     
     # Job Sources
     SUPPORTED_JOB_SITES = [

@@ -35,8 +35,15 @@ class ApplicationStatus(BaseModel):
     errors: int
     status: str
 
-# Global agent instance
-agent = JobApplierAgent()
+# Global agent instance - will be initialized later
+agent = None
+
+def get_agent():
+    """Get or create the global agent instance"""
+    global agent
+    if agent is None:
+        agent = JobApplierAgent()
+    return agent
 
 @router.post("/search-jobs")
 async def search_jobs(
@@ -45,6 +52,7 @@ async def search_jobs(
 ):
     """Search for job opportunities based on criteria"""
     try:
+        agent = get_agent()
         jobs = await agent.search_jobs_async(
             keywords=request.keywords,
             location=request.location,
@@ -67,6 +75,7 @@ async def start_application_process(
 ):
     """Start the automated job application process"""
     try:
+        agent = get_agent()
         # Run job application process in background
         background_tasks.add_task(
             agent.run_application_process,
@@ -87,6 +96,7 @@ async def start_application_process(
 async def get_applications(current_user: UserProfile = Depends(get_current_user)):
     """Get all job applications history"""
     try:
+        agent = get_agent()
         applications = agent.get_applications_history()
         return {
             "applications": applications,
@@ -99,6 +109,7 @@ async def get_applications(current_user: UserProfile = Depends(get_current_user)
 async def get_application_status(current_user: UserProfile = Depends(get_current_user)):
     """Get current application process status"""
     try:
+        agent = get_agent()
         status = agent.get_current_status()
         return status
     except Exception as e:
@@ -113,6 +124,7 @@ async def generate_cover_letter(
 ):
     """Generate AI-powered cover letter for specific job"""
     try:
+        agent = get_agent()
         cover_letter = await agent.generate_cover_letter_async(
             job_title, company, job_description
         )
@@ -127,11 +139,12 @@ async def generate_cover_letter(
 @router.get("/config")
 async def get_config(current_user: UserProfile = Depends(get_current_user)):
     """Get current agent configuration"""
+    agent = get_agent()
     return {
-        "keywords": agent.config.KEYWORDS,
-        "location": agent.config.LOCATION,
+        "keywords": getattr(agent.config, 'KEYWORDS', 'python developer'),
+        "location": getattr(agent.config, 'LOCATION', 'remote'),
         "max_applications_per_day": agent.config.MAX_APPLICATIONS_PER_DAY,
-        "auto_apply": agent.config.AUTO_APPLY
+        "auto_apply": getattr(agent.config, 'AUTO_APPLY', False)
     }
 
 @router.post("/config")
@@ -142,6 +155,7 @@ async def update_config(
     current_user: UserProfile = Depends(get_current_user)
 ):
     """Update agent configuration"""
+    agent = get_agent()
     if keywords:
         agent.config.KEYWORDS = keywords
     if location:

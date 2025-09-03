@@ -11,13 +11,23 @@ from config import Config
 class JobApplierAgent:
     def __init__(self):
         self.config = Config()
-        # Lazy import to avoid circular imports
-        from .models import create_database
-        self.engine = create_database(self.config.DATABASE_URL)
+        self.engine = None
         self.current_session = None
+        self._initialize_database()
         print(f"🤖 AI Job Applier Agent initialized")
         print(f"Max applications per day: {self.config.MAX_APPLICATIONS_PER_DAY}")
-        print(f"Target keywords: {self.config.KEYWORDS}")
+        
+    def _initialize_database(self):
+        """Initialize database connection with error handling"""
+        try:
+            # Lazy import to avoid circular imports
+            from .models import create_database
+            self.engine = create_database(self.config.DATABASE_URL)
+            print("✅ Database connected successfully")
+        except Exception as e:
+            print(f"⚠️  Database connection failed: {str(e)}")
+            print("📝 Application will continue with limited functionality")
+            self.engine = None
     
     def run(self):
         """

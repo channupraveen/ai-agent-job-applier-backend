@@ -11,6 +11,9 @@ from .models import UserProfile
 
 notification_router = APIRouter()
 
+# Alias for import compatibility
+router = notification_router
+
 class Notification(BaseModel):
     id: int
     title: str
@@ -25,7 +28,7 @@ class NotificationSettings(BaseModel):
     job_alerts: bool = True
     application_updates: bool = True
 
-@notification_router.get("/notifications")
+@router.get("/notifications")
 async def get_notifications(
     current_user: UserProfile = Depends(get_current_user)
 ):
@@ -33,7 +36,7 @@ async def get_notifications(
     # TODO: Implement notification retrieval
     return {"notifications": [], "unread_count": 0}
 
-@notification_router.post("/notifications/mark-read")
+@router.post("/notifications/mark-read")
 async def mark_notifications_read(
     notification_ids: List[int],
     current_user: UserProfile = Depends(get_current_user)
@@ -42,7 +45,7 @@ async def mark_notifications_read(
     # TODO: Implement mark as read
     return {"marked_read": len(notification_ids)}
 
-@notification_router.post("/notifications/settings")
+@router.post("/notifications/settings")
 async def update_notification_settings(
     settings: NotificationSettings,
     current_user: UserProfile = Depends(get_current_user)
