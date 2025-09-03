@@ -136,6 +136,197 @@ class ApplicationNotes(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
+class JobSearchCriteria(Base):
+    """Model for user job search preferences"""
+    __tablename__ = "job_search_criteria"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_profile_id = Column(Integer, nullable=False)
+    
+    # Search parameters
+    keywords = Column(Text, nullable=False)
+    excluded_keywords = Column(Text)
+    min_salary = Column(Integer)
+    max_salary = Column(Integer)
+    job_types = Column(Text)  # JSON: full-time, part-time, contract, internship
+    experience_levels = Column(Text)  # JSON: entry, mid, senior, executive
+    
+    # Location preferences
+    locations = Column(Text)  # JSON array of preferred locations
+    remote_allowed = Column(Boolean, default=True)
+    willing_to_relocate = Column(Boolean, default=False)
+    
+    # Company preferences
+    company_sizes = Column(Text)  # JSON: startup, small, medium, large, enterprise
+    industries = Column(Text)  # JSON array of preferred industries
+    
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CompanyBlacklist(Base):
+    """Model for blacklisted companies"""
+    __tablename__ = "company_blacklist"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    company_name = Column(String(255), nullable=False)
+    reason = Column(Text)
+    added_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WebsiteConfiguration(Base):
+    """Model for website automation configurations"""
+    __tablename__ = "website_configurations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, unique=True)
+    base_url = Column(String(500), nullable=False)
+    job_search_url = Column(String(500), nullable=False)
+    login_required = Column(Boolean, default=False)
+    login_url = Column(String(500))
+    
+    # CSS/XPath selectors stored as JSON
+    search_selectors = Column(Text)  # JSON: {"keywords": "#search-input", "location": "#location-input"}
+    job_selectors = Column(Text)     # JSON: {"job_title": ".job-title", "company": ".company-name"}
+    form_selectors = Column(Text)    # JSON: {"apply_button": ".apply-btn", "resume_upload": "input[type='file']"}
+    
+    # Pagination and scraping settings
+    pagination_selector = Column(String(255))
+    max_pages = Column(Integer, default=5)
+    delay_between_requests = Column(Integer, default=2)  # seconds
+    
+    # Status and metadata
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ApplicationLog(Base):
+    """Model for detailed application logs"""
+    __tablename__ = "application_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer)
+    job_application_id = Column(Integer)
+    
+    # Log details
+    action = Column(String(100))  # searched, analyzed, applied, skipped, error
+    message = Column(Text)
+    details = Column(Text)  # JSON with additional details
+    
+    # Error tracking
+    error_type = Column(String(100))
+    error_details = Column(Text)
+    
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+
+class ApiUsage(Base):
+    """Model for API usage tracking"""
+    __tablename__ = "api_usage"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    endpoint = Column(String(255))
+    method = Column(String(10))
+    status_code = Column(Integer)
+    response_time_ms = Column(Integer)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    user_agent = Column(Text)
+    ip_address = Column(String(45))
+
+
+class ExternalJobResult(Base):
+    """Model for storing external job search results"""
+    __tablename__ = "external_job_results"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    external_job_id = Column(String(255))  # ID from external source
+    source = Column(String(50), nullable=False)  # linkedin, indeed, naukri, etc.
+    
+    # Job details
+    title = Column(String(255), nullable=False)
+    company = Column(String(255), nullable=False)
+    location = Column(String(255))
+    description = Column(Text)
+    requirements = Column(Text)
+    salary = Column(String(100))
+    job_type = Column(String(50))
+    url = Column(String(500))
+    
+    # Metadata
+    posted_date = Column(DateTime)
+    fetched_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
+
+class BrowserSession(Base):
+    """Model for browser automation sessions"""
+    __tablename__ = "browser_sessions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False)
+    website = Column(String(100))  # linkedin, indeed, etc.
+    
+    # Session details
+    started_at = Column(DateTime, default=datetime.utcnow)
+    ended_at = Column(DateTime)
+    status = Column(String(50), default="active")  # active, completed, error, timeout
+    
+    # Automation results
+    jobs_processed = Column(Integer, default=0)
+    applications_submitted = Column(Integer, default=0)
+    errors_encountered = Column(Integer, default=0)
+    
+    # Session metadata
+    browser_type = Column(String(50), default="chrome")
+    headless_mode = Column(Boolean, default=True)
+    session_notes = Column(Text)
+
+
+class NotificationSettings(Base):
+    """Model for user notification preferences"""
+    __tablename__ = "notification_settings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False)
+    
+    # Email notifications
+    email_enabled = Column(Boolean, default=True)
+    email_frequency = Column(String(20), default="daily")  # immediate, hourly, daily, weekly
+    
+    # Notification types
+    notify_new_jobs = Column(Boolean, default=True)
+    notify_applications_sent = Column(Boolean, default=True)
+    notify_responses_received = Column(Boolean, default=True)
+    notify_automation_complete = Column(Boolean, default=True)
+    notify_errors = Column(Boolean, default=True)
+    
+    # SMS notifications (if implemented)
+    sms_enabled = Column(Boolean, default=False)
+    sms_number = Column(String(20))
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Analytics(Base):
+    """Model for storing analytics data"""
+    __tablename__ = "analytics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer)
+    
+    # Metric details
+    metric_name = Column(String(100), nullable=False)  # applications_sent, jobs_found, etc.
+    metric_value = Column(Integer, nullable=False)
+    metric_data = Column(Text)  # JSON for additional data
+    
+    # Time and context
+    date_recorded = Column(DateTime, default=datetime.utcnow)
+    source = Column(String(50))  # automation, manual, import
+    session_id = Column(Integer)  # Link to automation session if applicable
+
 # Database setup
 def create_database(database_url: str = None):
     if database_url is None:
