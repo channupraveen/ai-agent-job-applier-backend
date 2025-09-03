@@ -37,6 +37,325 @@ def calculate_match_score(
             10 for skill in user_skills if f" {skill.lower()} " in f" {req_text} "
         )
 
+
+# ===================================
+# APPLICATION MANAGEMENT APIs
+# ===================================
+
+@router.put("/applications/{application_id}/status")
+async def update_application_status(
+    application_id: int,
+    status_data: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db),
+):
+    """Update job application status (applied/rejected/interview/offer)"""
+    try:
+        new_status = status_data.get("status")
+        notes = status_data.get("notes", "")
+        
+        if not new_status:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Status is required"
+            )
+        
+        # Validate status
+        valid_statuses = ["found", "analyzed", "applied", "rejected", "interview", "offer"]
+        if new_status not in valid_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+            )
+        
+        # Check if job exists
+        check_query = "SELECT id, title, company FROM job_applications WHERE id = :job_id"
+        existing = db.execute(text(check_query), {"job_id": application_id}).fetchone()
+        
+        if not existing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Job application not found"
+            )
+        
+        # Update job status
+        update_fields = ["status = :status", "updated_at = :updated_at"]
+        params = {
+            "job_id": application_id,
+            "status": new_status,
+            "updated_at": datetime.utcnow()
+        }
+        
+        # Set applied_at timestamp if status is 'applied'
+        if new_status == "applied":
+            update_fields.append("applied_at = :applied_at")
+            params["applied_at"] = datetime.utcnow()
+        
+        # Set response_date if status indicates response
+        if new_status in ["rejected", "interview", "offer"]:
+            update_fields.append("response_received = true")
+        
+        update_query = f"""
+        UPDATE job_applications 
+        SET {', '.join(update_fields)}
+        WHERE id = :job_id
+        RETURNING id, title, company, status, applied_at
+        """
+        
+        result = db.execute(text(update_query), params)
+        updated_job = result.fetchone()
+        db.commit()
+        
+        # Add note if provided
+        if notes:
+            note_query = """
+            INSERT INTO application_notes (job_application_id, note, created_at)
+            VALUES (:job_id, :note, :created_at)
+            """
+            
+            note_params = {
+                "job_id": application_id,
+                "note": f"Status changed to {new_status}: {notes}",
+                "created_at": datetime.utcnow()
+            }
+            
+            db.execute(text(note_query), note_params)
+            db.commit()
+        
+        job_dict = dict(updated_job._mapping)
+        if job_dict.get("applied_at"):
+            job_dict["applied_at"] = job_dict["applied_at"].isoformat()
+        
+        return {
+            "success": True,
+            "message": f"Application status updated to {new_status}",
+            "application": job_dict
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating application status: {str(e)}"
+        )
+
+
+@router.post("/applications/{application_id}/notes")
+async def add_application_note(
+    application_id: int,
+    note_data: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db),
+):
+    """Add a note to a job application"""
+    try:
+        note_text = note_data.get("note")
+        
+        if not note_text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Note text is required"
+            )
+        
+        # Check if job exists
+        check_query = "SELECT id, title, company FROM job_applications WHERE id = :job_id"
+        existing = db.execute(text(check_query), {"job_id": application_id}).fetchone()
+        
+        if not existing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Job application not found"
+            )
+        
+        # Insert note
+        insert_query = """
+        INSERT INTO application_notes (job_application_id, note, created_at, updated_at)
+        VALUES (:job_id, :note, :created_at, :updated_at)
+        RETURNING id, note, created_at
+        """
+        
+        params = {
+            "job_id": application_id,
+            "note": note_text,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        result = db.execute(text(insert_query), params)
+        new_note = result.fetchone()
+        db.commit()
+        
+        note_dict = dict(new_note._mapping)
+        note_dict["created_at"] = note_dict["created_at"].isoformat()
+        
+        return {
+            "success": True,
+            "message": "Note added successfully",
+            "note": note_dict
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error adding note: {str(e)}"
+        )
+
+
+@router.get("/applications/analytics")
+async def get_application_analytics(
+    days_back: int = Query(30, ge=1, le=365),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db),
+):
+    """Get application success metrics and analytics"""
+    try:
+        start_date = datetime.utcnow() - timedelta(days=days_back)
+        
+        # Overall application statistics
+        stats_query = """
+        SELECT 
+            COUNT(*) as total_applications,
+            COUNT(CASE WHEN status = 'applied' THEN 1 END) as applied_count,
+            COUNT(CASE WHEN status = 'interview' THEN 1 END) as interview_count,
+            COUNT(CASE WHEN status = 'offer' THEN 1 END) as offer_count,
+            COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_count,
+            COUNT(CASE WHEN response_received = true THEN 1 END) as responses_received,
+            AVG(match_score) as avg_match_score
+        FROM job_applications
+        WHERE created_at >= :start_date
+        """
+        
+        stats_result = db.execute(text(stats_query), {"start_date": start_date})
+        overall_stats = dict(stats_result.fetchone()._mapping)
+        
+        # Success rates calculation
+        total_apps = overall_stats.get("total_applications", 0)
+        applied_count = overall_stats.get("applied_count", 0)
+        interview_count = overall_stats.get("interview_count", 0)
+        offer_count = overall_stats.get("offer_count", 0)
+        responses = overall_stats.get("responses_received", 0)
+        
+        success_rates = {
+            "application_rate": round((applied_count / max(total_apps, 1)) * 100, 2),
+            "response_rate": round((responses / max(applied_count, 1)) * 100, 2),
+            "interview_rate": round((interview_count / max(applied_count, 1)) * 100, 2),
+            "offer_rate": round((offer_count / max(interview_count, 1)) * 100, 2)
+        }
+        
+        # Daily application trend
+        trend_query = """
+        SELECT 
+            DATE(created_at) as date,
+            COUNT(*) as jobs_found,
+            COUNT(CASE WHEN applied_at IS NOT NULL THEN 1 END) as jobs_applied,
+            COUNT(CASE WHEN status = 'interview' THEN 1 END) as interviews,
+            COUNT(CASE WHEN status = 'offer' THEN 1 END) as offers
+        FROM job_applications
+        WHERE created_at >= :start_date
+        GROUP BY DATE(created_at)
+        ORDER BY date DESC
+        LIMIT 30
+        """
+        
+        trend_result = db.execute(text(trend_query), {"start_date": start_date})
+        daily_trend = [dict(row._mapping) for row in trend_result.fetchall()]
+        
+        # Top performing companies
+        company_query = """
+        SELECT 
+            company,
+            COUNT(*) as total_jobs,
+            COUNT(CASE WHEN status = 'applied' THEN 1 END) as applied,
+            COUNT(CASE WHEN status = 'interview' THEN 1 END) as interviews,
+            AVG(match_score) as avg_match_score
+        FROM job_applications
+        WHERE created_at >= :start_date
+        GROUP BY company
+        HAVING COUNT(CASE WHEN status = 'applied' THEN 1 END) > 0
+        ORDER BY interviews DESC, applied DESC
+        LIMIT 10
+        """
+        
+        company_result = db.execute(text(company_query), {"start_date": start_date})
+        top_companies = [dict(row._mapping) for row in company_result.fetchall()]
+        
+        return {
+            "success": True,
+            "message": f"Analytics for last {days_back} days",
+            "period": {
+                "days_back": days_back,
+                "start_date": start_date.isoformat(),
+                "end_date": datetime.utcnow().isoformat()
+            },
+            "overall_stats": overall_stats,
+            "success_rates": success_rates,
+            "daily_trend": daily_trend,
+            "top_companies": top_companies,
+            "insights": {
+                "total_applications": total_apps,
+                "best_performing_company": top_companies[0]["company"] if top_companies else None,
+                "avg_match_score": round(overall_stats.get("avg_match_score", 0) or 0, 1)
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving analytics: {str(e)}"
+        )
+
+
+@router.delete("/applications/{application_id}")
+async def delete_application(
+    application_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db),
+):
+    """Remove a job application record"""
+    try:
+        # Check if job exists
+        check_query = "SELECT id, title, company FROM job_applications WHERE id = :job_id"
+        existing = db.execute(text(check_query), {"job_id": application_id}).fetchone()
+        
+        if not existing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Job application not found"
+            )
+        
+        job_info = dict(existing._mapping)
+        
+        # Delete associated notes first
+        delete_notes_query = "DELETE FROM application_notes WHERE job_application_id = :job_id"
+        db.execute(text(delete_notes_query), {"job_id": application_id})
+        
+        # Delete job application
+        delete_query = "DELETE FROM job_applications WHERE id = :job_id"
+        db.execute(text(delete_query), {"job_id": application_id})
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Application '{job_info['title']}' at {job_info['company']} deleted successfully"
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting application: {str(e)}"
+        )
+
     return min(match_percentage + bonus, 100)
 
 

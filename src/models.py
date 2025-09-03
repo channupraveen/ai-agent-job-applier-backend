@@ -99,6 +99,15 @@ class ApplicationSession(Base):
     location = Column(String)
     status = Column(String, default="running")  # running, completed, error
 
+class ApplicationNotes(Base):
+    __tablename__ = "application_notes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    job_application_id = Column(Integer, nullable=False)
+    note = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # Database setup
 def create_database(database_url: str = None):
     if database_url is None:
