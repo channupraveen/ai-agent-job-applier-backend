@@ -11,7 +11,7 @@ class Config:
     # Database Configuration
     DATABASE_URL = os.getenv(
         "DATABASE_URL", 
-        "postgresql://postgres:1234@localhost:5432/job_applier_db"  # Updated with correct password
+        "postgresql://postgres:1234@localhost:5432/job_applier_db"  # Updated with correct password and database name
     )
     
     # API Keys
@@ -20,7 +20,8 @@ class Config:
     
     # Authentication
     SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
-    ACCESS_TOKEN_EXPIRE_MINUTES = 30
+    ALGORITHM = os.getenv("ALGORITHM", "HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
     
     # Google OAuth (if using)
     GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
