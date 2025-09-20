@@ -4,6 +4,7 @@ FastAPI server entry point for AI Job Application Agent
 """
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from src.api import router
 from src.auth_routes import auth_router
@@ -27,6 +28,34 @@ app = FastAPI(
     title="AI Job Application Agent API",
     description="Automate job applications with AI-powered resume customization, intelligent job matching, and cross-platform access. Apply to jobs from any device!",
     version="1.0.0"
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:4200",
+        "http://localhost:3000", 
+        "http://127.0.0.1:4200",
+        "http://127.0.0.1:3000",
+        "*"  # Allow all origins for development - restrict in production
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=[
+        "Accept",
+        "Accept-Language",
+        "Content-Language",
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "Origin",
+        "Cache-Control",
+        "Pragma",
+        "X-CSRFToken"
+    ],
+    expose_headers=["*"],
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
 # Initialize database on startup
@@ -93,6 +122,16 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "version": "1.0.0"}
+
+@app.options("/auth/{path:path}")
+async def auth_options(path: str):
+    """Handle OPTIONS requests for auth endpoints"""
+    return {"message": "OK"}
+
+@app.options("/api/{path:path}")
+async def api_options(path: str):
+    """Handle OPTIONS requests for API endpoints"""
+    return {"message": "OK"}
 
 if __name__ == "__main__":
     uvicorn.run(
