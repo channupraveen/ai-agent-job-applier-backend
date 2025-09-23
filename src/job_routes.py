@@ -502,7 +502,7 @@ async def search_jobs(
         )
 
 
-@router.get("/{job_id}")
+@router.get("/jobs/{job_id}")
 async def get_job_details(
     job_id: int,
     include_similar: bool = Query(
