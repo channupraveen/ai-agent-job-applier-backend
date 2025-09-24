@@ -32,6 +32,9 @@ class UserProfile(Base):
     skills = Column(Text)  # JSON array of skills
     preferred_locations = Column(Text)  # JSON array of locations
     salary_expectations = Column(String(100))
+    current_ctc = Column(String(100))  # ✅ Added missing field
+    expected_ctc = Column(String(100))  # ✅ Added missing field
+    education = Column(Text)  # ✅ Added missing field - JSON array of education entries
     
     # Files
     resume_path = Column(String(500))

@@ -19,6 +19,15 @@ router = APIRouter(tags=["User Profile Management"])
 ai_service = AIService()
 
 
+class EducationEntry(BaseModel):
+    """Education entry model"""
+    degree: str
+    institution: str
+    field_of_study: Optional[str] = None
+    graduation_year: Optional[str] = None
+    gpa: Optional[str] = None
+
+
 class ProfileUpdateRequest(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
@@ -27,11 +36,14 @@ class ProfileUpdateRequest(BaseModel):
     skills: Optional[List[str]] = None
     preferred_locations: Optional[List[str]] = None
     salary_expectations: Optional[str] = None
+    current_ctc: Optional[str] = None  # ✅ Added missing field
+    expected_ctc: Optional[str] = None  # ✅ Added missing field
     portfolio_url: Optional[str] = None
     linkedin_url: Optional[str] = None
     auto_apply_enabled: Optional[bool] = None
     max_applications_per_day: Optional[int] = None
     preferred_job_types: Optional[List[str]] = None
+    education: Optional[List[EducationEntry]] = None  # ✅ Added missing field
 
 
 class SkillsRequest(BaseModel):
@@ -55,6 +67,8 @@ async def get_user_profile(
             "skills": json.loads(current_user.skills or "[]"),
             "preferred_locations": json.loads(current_user.preferred_locations or "[]"),
             "salary_expectations": current_user.salary_expectations,
+            "current_ctc": getattr(current_user, 'current_ctc', None),  # ✅ Added missing field
+            "expected_ctc": getattr(current_user, 'expected_ctc', None),  # ✅ Added missing field
             "portfolio_url": current_user.portfolio_url,
             "linkedin_url": current_user.linkedin_url,
             "resume_path": current_user.resume_path,
@@ -72,6 +86,7 @@ async def get_user_profile(
             "last_login": (
                 current_user.last_login.isoformat() if current_user.last_login else None
             ),
+            "education": json.loads(getattr(current_user, 'education', '[]') or '[]'),  # ✅ Added missing field
         }
 
         # Calculate profile completion
@@ -128,6 +143,15 @@ async def update_user_profile(
             update_fields.append("salary_expectations = :salary_expectations")
             params["salary_expectations"] = profile_update.salary_expectations
 
+        # ✅ Added missing CTC fields
+        if profile_update.current_ctc is not None:
+            update_fields.append("current_ctc = :current_ctc")
+            params["current_ctc"] = profile_update.current_ctc
+
+        if profile_update.expected_ctc is not None:
+            update_fields.append("expected_ctc = :expected_ctc")
+            params["expected_ctc"] = profile_update.expected_ctc
+
         if profile_update.portfolio_url is not None:
             update_fields.append("portfolio_url = :portfolio_url")
             params["portfolio_url"] = profile_update.portfolio_url
@@ -150,6 +174,13 @@ async def update_user_profile(
                 profile_update.preferred_job_types
             )
 
+        # ✅ Added missing education field
+        if profile_update.education is not None:
+            update_fields.append("education = :education")
+            # Convert EducationEntry objects to dict for JSON serialization
+            education_data = [edu.dict() if hasattr(edu, 'dict') else edu for edu in profile_update.education]
+            params["education"] = json.dumps(education_data)
+
         if not update_fields:
             raise HTTPException(status_code=400, detail="No fields provided for update")
 
@@ -170,13 +201,43 @@ async def update_user_profile(
         if not updated_user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        user_dict = dict(updated_user._mapping)
-
-        return {
-            "success": True,
-            "message": "Profile updated successfully",
-            "user": user_dict,
+        # ✅ FIXED: Return complete profile data after update
+        # Fetch the complete updated user profile
+        db.refresh(current_user)
+        
+        complete_profile = {
+            "id": current_user.id,
+            "name": current_user.name,
+            "email": current_user.email,
+            "phone": current_user.phone,
+            "current_title": current_user.current_title,
+            "experience_years": current_user.experience_years,
+            "skills": json.loads(current_user.skills or "[]"),
+            "preferred_locations": json.loads(current_user.preferred_locations or "[]"),
+            "salary_expectations": current_user.salary_expectations,
+            "current_ctc": getattr(current_user, 'current_ctc', None),
+            "expected_ctc": getattr(current_user, 'expected_ctc', None),
+            "portfolio_url": current_user.portfolio_url,
+            "linkedin_url": current_user.linkedin_url,
+            "resume_path": current_user.resume_path,
+            "profile_picture_url": current_user.profile_picture_url,
+            "auto_apply_enabled": current_user.auto_apply_enabled,
+            "max_applications_per_day": current_user.max_applications_per_day,
+            "preferred_job_types": json.loads(current_user.preferred_job_types or "[]"),
+            "auth_provider": current_user.auth_provider,
+            "created_at": (
+                current_user.created_at.isoformat() if current_user.created_at else None
+            ),
+            "updated_at": (
+                current_user.updated_at.isoformat() if current_user.updated_at else None
+            ),
+            "last_login": (
+                current_user.last_login.isoformat() if current_user.last_login else None
+            ),
+            "education": json.loads(getattr(current_user, 'education', '[]') or '[]'),
         }
+
+        return complete_profile
 
     except HTTPException:
         db.rollback()
