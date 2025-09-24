@@ -86,7 +86,22 @@ async def get_user_profile(
             "last_login": (
                 current_user.last_login.isoformat() if current_user.last_login else None
             ),
-            "education": json.loads(getattr(current_user, 'education', '[]') or '[]'),  # ✅ Added missing field
+            "education": json.loads(getattr(current_user, 'education', '[]') or '[]'),
+            "completion_score": await calculate_profile_completion({
+                "name": current_user.name,
+                "current_title": current_user.current_title,
+                "experience_years": current_user.experience_years,
+                "skills": json.loads(current_user.skills or "[]"),
+                "education": json.loads(getattr(current_user, 'education', '[]') or '[]'),
+                "resume_path": current_user.resume_path,
+                "phone": current_user.phone,
+                "current_ctc": getattr(current_user, 'current_ctc', None),
+                "expected_ctc": getattr(current_user, 'expected_ctc', None),
+                "preferred_locations": json.loads(current_user.preferred_locations or "[]"),
+                "preferred_job_types": json.loads(current_user.preferred_job_types or "[]"),
+                "portfolio_url": current_user.portfolio_url,
+                "linkedin_url": current_user.linkedin_url
+            }),  # ✅ Added missing field
         }
 
         # Calculate profile completion
@@ -174,11 +189,19 @@ async def update_user_profile(
                 profile_update.preferred_job_types
             )
 
-        # ✅ Added missing education field
+        # ✅ Education field
         if profile_update.education is not None:
             update_fields.append("education = :education")
             # Convert EducationEntry objects to dict for JSON serialization
-            education_data = [edu.dict() if hasattr(edu, 'dict') else edu for edu in profile_update.education]
+            education_data = []
+            for edu in profile_update.education:
+                if hasattr(edu, 'dict'):
+                    edu_dict = edu.dict()
+                else:
+                    edu_dict = edu
+                # Remove empty fields
+                edu_dict = {k: v for k, v in edu_dict.items() if v}
+                education_data.append(edu_dict)
             params["education"] = json.dumps(education_data)
 
         if not update_fields:
@@ -203,7 +226,11 @@ async def update_user_profile(
 
         # ✅ FIXED: Return complete profile data after update
         # Fetch the complete updated user profile
-        db.refresh(current_user)
+        try:
+            db.refresh(current_user)
+        except Exception as e:
+            # If refresh fails, fetch user again
+            current_user = db.query(User).filter(User.id == current_user.id).first()
         
         complete_profile = {
             "id": current_user.id,
@@ -394,31 +421,44 @@ async def upload_profile_picture(
 
 # Helper functions
 async def calculate_profile_completion(profile_data: Dict) -> int:
-    """Calculate profile completion percentage"""
-    required_fields = [
-        "name",
-        "current_title",
-        "experience_years",
-        "skills",
-        "resume_path",
-        "portfolio_url",
-        "linkedin_url",
+    """Calculate profile completion percentage with enhanced scoring"""
+    weighted_fields = [
+        ("name", 10),
+        ("current_title", 15),
+        ("experience_years", 10),
+        ("skills", 20),  # High weight for skills
+        ("education", 15),  # Education is important
+        ("resume_path", 10),
+        ("phone", 5),
+        ("current_ctc", 5),
+        ("expected_ctc", 5),
+        ("preferred_locations", 5),
+        ("preferred_job_types", 5),
+        ("portfolio_url", 5),
+        ("linkedin_url", 5),
     ]
 
-    completed = 0
-    for field in required_fields:
-        value = profile_data.get(field)
-        if field == "skills":
-            if value and len(value) > 0:
-                completed += 1
-        elif value:
-            completed += 1
+    total_weight = sum(weight for _, weight in weighted_fields)
+    achieved_weight = 0
 
-    return int((completed / len(required_fields)) * 100)
+    for field, weight in weighted_fields:
+        value = profile_data.get(field)
+        if field == "skills" and value and len(value) >= 3:
+            achieved_weight += weight
+        elif field == "education" and value and len(value) > 0:
+            achieved_weight += weight
+        elif field == "preferred_locations" and value and len(value) > 0:
+            achieved_weight += weight
+        elif field == "preferred_job_types" and value and len(value) > 0:
+            achieved_weight += weight
+        elif value:
+            achieved_weight += weight
+
+    return int((achieved_weight / total_weight) * 100)
 
 
 def generate_profile_suggestions(profile_data: Dict) -> List[str]:
-    """Generate profile improvement suggestions"""
+    """Generate enhanced profile improvement suggestions"""
     suggestions = []
 
     if not profile_data.get("name"):
@@ -431,22 +471,35 @@ def generate_profile_suggestions(profile_data: Dict) -> List[str]:
         suggestions.append("Add years of experience")
 
     skills = profile_data.get("skills", [])
-    if len(skills) < 5:
-        suggestions.append(
-            f"Add more skills (currently {len(skills)}, recommended: 5+)"
-        )
+    if len(skills) < 3:
+        suggestions.append(f"Add more skills (currently {len(skills)}, recommended: 3+)")
+
+    if not profile_data.get("education") or len(profile_data.get("education", [])) == 0:
+        suggestions.append("Add your education background")
 
     if not profile_data.get("resume_path"):
         suggestions.append("Upload your resume")
+
+    if not profile_data.get("phone"):
+        suggestions.append("Add phone number for contact")
+
+    if not profile_data.get("current_ctc"):
+        suggestions.append("Add your current salary package")
+
+    if not profile_data.get("expected_ctc"):
+        suggestions.append("Add your salary expectations")
+
+    if not profile_data.get("preferred_locations") or len(profile_data.get("preferred_locations", [])) == 0:
+        suggestions.append("Set preferred work locations")
+
+    if not profile_data.get("preferred_job_types") or len(profile_data.get("preferred_job_types", [])) == 0:
+        suggestions.append("Select preferred job types")
 
     if not profile_data.get("portfolio_url"):
         suggestions.append("Add portfolio URL to showcase your work")
 
     if not profile_data.get("linkedin_url"):
         suggestions.append("Add LinkedIn profile for better networking")
-
-    if not profile_data.get("phone"):
-        suggestions.append("Add phone number for contact")
 
     return suggestions
 
@@ -455,9 +508,11 @@ def get_profile_strength(completion_score: int) -> str:
     """Get profile strength based on completion score"""
     if completion_score >= 90:
         return "Excellent"
-    elif completion_score >= 70:
+    elif completion_score >= 75:
+        return "Very Good"
+    elif completion_score >= 60:
         return "Good"
-    elif completion_score >= 50:
+    elif completion_score >= 45:
         return "Fair"
     else:
         return "Needs Improvement"
