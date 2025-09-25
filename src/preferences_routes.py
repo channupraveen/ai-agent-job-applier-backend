@@ -19,17 +19,25 @@ router = APIRouter(tags=["User Preferences & Job Criteria"])
 class JobSearchCriteria(BaseModel):
     keywords: str
     excluded_keywords: Optional[str] = None
+    excludedKeywords: Optional[str] = None  # Accept camelCase from frontend
     min_salary: Optional[int] = None
+    minSalary: Optional[int] = None  # Accept camelCase from frontend
     max_salary: Optional[int] = None
+    maxSalary: Optional[int] = None  # Accept camelCase from frontend
     job_types: Optional[List[str]] = None  # full-time, part-time, contract, internship
+    jobTypes: Optional[List[str]] = None  # Accept camelCase from frontend
     experience_levels: Optional[List[str]] = None  # entry, mid, senior, executive
+    experienceLevels: Optional[List[str]] = None  # Accept camelCase from frontend
     locations: Optional[List[str]] = None
     remote_allowed: bool = True
+    remoteAllowed: Optional[bool] = None  # Accept camelCase from frontend
     willing_to_relocate: bool = False
-    company_sizes: Optional[List[str]] = (
-        None  # startup, small, medium, large, enterprise
-    )
+    willingToRelocate: Optional[bool] = None  # Accept camelCase from frontend
+    company_sizes: Optional[List[str]] = None  # startup, small, medium, large, enterprise
+    companySizes: Optional[List[str]] = None  # Accept camelCase from frontend
     industries: Optional[List[str]] = None
+    is_active: Optional[bool] = True
+    isActive: Optional[bool] = None  # Accept camelCase from frontend
 
 
 class BlacklistRequest(BaseModel):
@@ -76,25 +84,26 @@ async def set_job_search_criteria(
             params = {
                 "user_id": current_user.id,
                 "keywords": criteria.keywords,
-                "excluded_keywords": criteria.excluded_keywords,
-                "min_salary": criteria.min_salary,
-                "max_salary": criteria.max_salary,
+                "excluded_keywords": criteria.excluded_keywords or criteria.excludedKeywords,
+                "min_salary": criteria.min_salary or criteria.minSalary,
+                "max_salary": criteria.max_salary or criteria.maxSalary,
                 "job_types": (
-                    json.dumps(criteria.job_types) if criteria.job_types else None
+                    json.dumps(criteria.job_types or criteria.jobTypes) 
+                    if (criteria.job_types or criteria.jobTypes) else None
                 ),
                 "experience_levels": (
-                    json.dumps(criteria.experience_levels)
-                    if criteria.experience_levels
+                    json.dumps(criteria.experience_levels or criteria.experienceLevels)
+                    if (criteria.experience_levels or criteria.experienceLevels)
                     else None
                 ),
                 "locations": (
                     json.dumps(criteria.locations) if criteria.locations else None
                 ),
-                "remote_allowed": criteria.remote_allowed,
-                "willing_to_relocate": criteria.willing_to_relocate,
+                "remote_allowed": criteria.remote_allowed if criteria.remoteAllowed is None else criteria.remoteAllowed,
+                "willing_to_relocate": criteria.willing_to_relocate if criteria.willingToRelocate is None else criteria.willingToRelocate,
                 "company_sizes": (
-                    json.dumps(criteria.company_sizes)
-                    if criteria.company_sizes
+                    json.dumps(criteria.company_sizes or criteria.companySizes)
+                    if (criteria.company_sizes or criteria.companySizes)
                     else None
                 ),
                 "industries": (
@@ -122,25 +131,26 @@ async def set_job_search_criteria(
             params = {
                 "user_id": current_user.id,
                 "keywords": criteria.keywords,
-                "excluded_keywords": criteria.excluded_keywords,
-                "min_salary": criteria.min_salary,
-                "max_salary": criteria.max_salary,
+                "excluded_keywords": criteria.excluded_keywords or criteria.excludedKeywords,
+                "min_salary": criteria.min_salary or criteria.minSalary,
+                "max_salary": criteria.max_salary or criteria.maxSalary,
                 "job_types": (
-                    json.dumps(criteria.job_types) if criteria.job_types else None
+                    json.dumps(criteria.job_types or criteria.jobTypes) 
+                    if (criteria.job_types or criteria.jobTypes) else None
                 ),
                 "experience_levels": (
-                    json.dumps(criteria.experience_levels)
-                    if criteria.experience_levels
+                    json.dumps(criteria.experience_levels or criteria.experienceLevels)
+                    if (criteria.experience_levels or criteria.experienceLevels)
                     else None
                 ),
                 "locations": (
                     json.dumps(criteria.locations) if criteria.locations else None
                 ),
-                "remote_allowed": criteria.remote_allowed,
-                "willing_to_relocate": criteria.willing_to_relocate,
+                "remote_allowed": criteria.remote_allowed if criteria.remoteAllowed is None else criteria.remoteAllowed,
+                "willing_to_relocate": criteria.willing_to_relocate if criteria.willingToRelocate is None else criteria.willingToRelocate,
                 "company_sizes": (
-                    json.dumps(criteria.company_sizes)
-                    if criteria.company_sizes
+                    json.dumps(criteria.company_sizes or criteria.companySizes)
+                    if (criteria.company_sizes or criteria.companySizes)
                     else None
                 ),
                 "industries": (
