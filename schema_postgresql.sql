@@ -1,6 +1,24 @@
 -- AI Agent Job Applier Database Schema - PostgreSQL Version
 -- This file creates all necessary tables and initial data for the job application system
 -- ===================================
+-- JOB SOURCES TABLE
+-- ===================================
+CREATE TABLE IF NOT EXISTS job_sources (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    api_key VARCHAR(255),
+    base_url VARCHAR(500),
+    rate_limit INTEGER DEFAULT 100,
+    last_sync TIMESTAMP,
+    total_jobs INTEGER DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'inactive',
+    icon VARCHAR(100) DEFAULT 'pi pi-briefcase',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ===================================
 -- JOB APPLICATIONS TABLE
 -- ===================================
 CREATE TABLE
@@ -337,6 +355,10 @@ CREATE INDEX IF NOT EXISTS idx_user_profiles_google_id ON user_profiles (google_
 
 CREATE INDEX IF NOT EXISTS idx_user_profiles_auth_provider ON user_profiles (auth_provider);
 
+-- Job Sources indexes
+CREATE INDEX IF NOT EXISTS idx_job_sources_enabled ON job_sources(enabled);
+CREATE INDEX IF NOT EXISTS idx_job_sources_last_sync ON job_sources(last_sync);
+
 -- ===================================
 -- INITIAL DATA
 -- ===================================
@@ -402,3 +424,28 @@ INSERT INTO
 VALUES
     ('Scam Corp', 'Known for fake job postings'),
     ('No Pay Inc', 'Poor payment history') ON CONFLICT DO NOTHING;
+
+-- Insert default job sources
+INSERT INTO job_sources (id, name, enabled, base_url, rate_limit, status, icon) VALUES 
+('naukri', 'Naukri.com', true, 'https://www.naukri.com', 500, 'active', 'pi pi-briefcase'),
+('indeed', 'Indeed India', true, 'https://in.indeed.com/rss', 1000, 'active', 'pi pi-search'),
+('timesjobs', 'TimesJobs', true, 'https://www.timesjobs.com/rss', 400, 'active', 'pi pi-clock'),
+('linkedin', 'LinkedIn Jobs', false, 'https://api.linkedin.com/v2/jobSearch', 100, 'inactive', 'pi pi-linkedin'),
+('foundit', 'Foundit (Monster India)', true, 'https://www.foundit.in', 300, 'active', 'pi pi-star'),
+('shine', 'Shine.com', true, 'https://www.shine.com', 250, 'active', 'pi pi-sun'),
+('freshersjobs', 'Freshers Jobs', true, 'https://www.freshersworld.com', 200, 'active', 'pi pi-users'),
+('internshala', 'Internshala', true, 'https://internshala.com', 150, 'active', 'pi pi-book'),
+('instahyre', 'Instahyre', true, 'https://www.instahyre.com', 200, 'active', 'pi pi-bolt'),
+('angellist', 'AngelList (Wellfound)', true, 'https://wellfound.com', 100, 'active', 'pi pi-heart'),
+('apnacircle', 'Apna Circle', true, 'https://apnacircle.com', 150, 'active', 'pi pi-users'),
+('hirist', 'Hirist (Tech Jobs)', true, 'https://www.hirist.com', 200, 'active', 'pi pi-desktop'),
+('jobhai', 'JobHai', true, 'https://www.jobhai.com', 150, 'active', 'pi pi-map'),
+('cutshort', 'Cutshort', true, 'https://cutshort.io', 100, 'active', 'pi pi-filter'),
+('jobsearch', 'Job Search India', false, 'https://www.jobsearchindia.com', 100, 'inactive', 'pi pi-compass'),
+('govtjobs', 'Government Jobs India', false, 'https://www.sarkariresult.com', 50, 'inactive', 'pi pi-building')
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    base_url = EXCLUDED.base_url,
+    rate_limit = EXCLUDED.rate_limit,
+    status = EXCLUDED.status,
+    icon = EXCLUDED.icon;

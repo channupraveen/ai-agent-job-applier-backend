@@ -41,6 +41,22 @@ class JobSourceUpdate(BaseModel):
     apiKey: Optional[str] = None
     rateLimit: Optional[int] = None
 
+# Global job sources state (mutable for sync time updates)
+JOB_SOURCES_STATE = None
+
+def get_job_sources_state():
+    """Get mutable job sources state"""
+    global JOB_SOURCES_STATE
+    if JOB_SOURCES_STATE is None:
+        # Deep copy to avoid modifying the original defaults
+        JOB_SOURCES_STATE = []
+        for source in DEFAULT_JOB_SOURCES:
+            source_copy = source.copy()
+            # Initialize lastSync to None for fresh starts
+            source_copy["lastSync"] = None
+            JOB_SOURCES_STATE.append(source_copy)
+    return JOB_SOURCES_STATE
+
 # Default job sources configuration - Indian Job Market Focus
 DEFAULT_JOB_SOURCES = [
     {
@@ -239,29 +255,59 @@ DEFAULT_JOB_SOURCES = [
 
 @router.get("/integrations/job-sources")
 async def get_job_sources(db: Session = Depends(get_job_db)):
-    """Get all configured job sources"""
+    """Get all configured job sources from database"""
     try:
+        # Get job sources from database
+        query = """
+        SELECT js.id, js.name, js.enabled, js.api_key, js.base_url, 
+               js.rate_limit, js.last_sync, js.status, js.icon,
+               COALESCE(job_count.total_jobs, 0) as total_jobs
+        FROM job_sources js
+        LEFT JOIN (
+            SELECT 
+                CASE 
+                    WHEN ai_reasoning LIKE '%Naukri.com%' THEN 'naukri'
+                    WHEN ai_reasoning LIKE '%Indeed India%' THEN 'indeed'
+                    WHEN ai_reasoning LIKE '%TimesJobs%' THEN 'timesjobs'
+                    WHEN ai_reasoning LIKE '%LinkedIn%' THEN 'linkedin'
+                    WHEN ai_reasoning LIKE '%Foundit%' OR ai_reasoning LIKE '%Monster India%' THEN 'foundit'
+                    WHEN ai_reasoning LIKE '%Shine.com%' THEN 'shine'
+                    WHEN ai_reasoning LIKE '%Freshers Jobs%' THEN 'freshersjobs'
+                    WHEN ai_reasoning LIKE '%Internshala%' THEN 'internshala'
+                    WHEN ai_reasoning LIKE '%Instahyre%' THEN 'instahyre'
+                    WHEN ai_reasoning LIKE '%AngelList%' OR ai_reasoning LIKE '%Wellfound%' THEN 'angellist'
+                    WHEN ai_reasoning LIKE '%Apna Circle%' THEN 'apnacircle'
+                    WHEN ai_reasoning LIKE '%Hirist%' THEN 'hirist'
+                    WHEN ai_reasoning LIKE '%JobHai%' THEN 'jobhai'
+                    WHEN ai_reasoning LIKE '%Cutshort%' THEN 'cutshort'
+                    WHEN ai_reasoning LIKE '%Job Search India%' THEN 'jobsearch'
+                    WHEN ai_reasoning LIKE '%Government Jobs%' THEN 'govtjobs'
+                END as source_id,
+                COUNT(*) as total_jobs
+            FROM job_applications 
+            WHERE ai_reasoning IS NOT NULL
+            GROUP BY source_id
+        ) job_count ON js.id = job_count.source_id
+        ORDER BY js.id
+        """
+        
+        result = db.execute(text(query)).fetchall()
+        
         sources = []
-        for source_config in DEFAULT_JOB_SOURCES:
-            try:
-                count_query = """
-                SELECT COUNT(*) as job_count,
-                       MAX(created_at) as last_sync
-                FROM job_applications 
-                WHERE ai_reasoning LIKE :source_pattern
-                """
-                
-                source_pattern = f"%{source_config['name']}%"
-                count_result = db.execute(text(count_query), {"source_pattern": source_pattern}).fetchone()
-                
-                if count_result:
-                    source_config = source_config.copy()
-                    source_config["totalJobs"] = count_result.job_count or 0
-                    source_config["lastSync"] = count_result.last_sync
-            except Exception as db_error:
-                print(f"DB error for {source_config['name']}: {str(db_error)}")
-            
-            sources.append(JobSource(**source_config))
+        for row in result:
+            source_data = {
+                "id": row.id,
+                "name": row.name,
+                "enabled": row.enabled,
+                "apiKey": row.api_key or "",
+                "baseUrl": row.base_url,
+                "rateLimit": row.rate_limit,
+                "lastSync": row.last_sync,
+                "totalJobs": row.total_jobs,
+                "status": row.status,
+                "icon": row.icon
+            }
+            sources.append(JobSource(**source_data))
         
         return sources
         
@@ -505,7 +551,20 @@ async def perform_job_sync(source_id: str, source_name: str, user_id: int, db: S
         
         db.commit()
         
-        # Enhanced logging with both metrics
+        # Update sync time in database after successful sync
+        try:
+            update_sync_query = """
+            UPDATE job_sources 
+            SET last_sync = :sync_time, updated_at = :sync_time 
+            WHERE id = :source_id
+            """
+            db.execute(text(update_sync_query), {
+                "sync_time": datetime.utcnow(),
+                "source_id": source_id
+            })
+            db.commit()
+        except Exception as update_error:
+            print(f"Error updating sync time for {source_id}: {str(update_error)}")
         if new_jobs_count > 0:
             print(f"✅ Synced {new_jobs_count} new jobs from {source_name} using criteria: '{search_keywords}' ({len(jobs)} total found)")
         else:
@@ -629,30 +688,74 @@ async def update_sync_preferences(
 async def update_job_source(
     source_id: str,
     update_data: JobSourceUpdate,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db)
 ):
     """Update job source settings (e.g., toggle enabled status)"""
     try:
-        # For now, we'll just return success since job sources are hardcoded
-        # In a real implementation, you'd store this in the database
+        # Check if source exists
+        check_query = "SELECT id, name FROM job_sources WHERE id = :source_id"
+        source_result = db.execute(text(check_query), {"source_id": source_id}).fetchone()
         
-        sources = DEFAULT_JOB_SOURCES.copy()
-        source = next((s for s in sources if s["id"] == source_id), None)
-        
-        if not source:
+        if not source_result:
             raise HTTPException(status_code=404, detail=f"Job source '{source_id}' not found")
         
-        if update_data.enabled is not None:
-            source["enabled"] = update_data.enabled
-            source["status"] = "active" if update_data.enabled else "inactive"
+        # Build update query dynamically based on provided fields
+        update_fields = []
+        params = {"source_id": source_id, "updated_at": datetime.utcnow()}
         
-        return {
-            "success": True,
-            "message": f"Job source '{source['name']}' updated successfully",
-            "source": source
-        }
+        if update_data.enabled is not None:
+            update_fields.append("enabled = :enabled")
+            params["enabled"] = update_data.enabled
+            
+            # Also update status based on enabled state
+            update_fields.append("status = :status")
+            params["status"] = "active" if update_data.enabled else "inactive"
+        
+        if update_data.apiKey is not None:
+            update_fields.append("api_key = :api_key")
+            params["api_key"] = update_data.apiKey
+        
+        if update_data.rateLimit is not None:
+            update_fields.append("rate_limit = :rate_limit")
+            params["rate_limit"] = update_data.rateLimit
+        
+        if update_fields:
+            update_fields.append("updated_at = :updated_at")
+            
+            update_query = f"""
+            UPDATE job_sources 
+            SET {', '.join(update_fields)}
+            WHERE id = :source_id
+            RETURNING id, name, enabled, status
+            """
+            
+            result = db.execute(text(update_query), params)
+            updated_source = result.fetchone()
+            db.commit()
+            
+            return {
+                "success": True,
+                "message": f"Job source '{updated_source.name}' updated successfully",
+                "source": {
+                    "id": updated_source.id,
+                    "name": updated_source.name,
+                    "enabled": updated_source.enabled,
+                    "status": updated_source.status
+                }
+            }
+        else:
+            return {
+                "success": True,
+                "message": "No changes to apply",
+                "source": {
+                    "id": source_result.id,
+                    "name": source_result.name
+                }
+            }
         
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Error updating job source: {str(e)}")
 
 
@@ -685,38 +788,109 @@ async def sync_all_sources(
                 "message": "Please add keywords to your job search criteria before syncing"
             }
         
-        # Get enabled sources
-        enabled_sources = [source for source in DEFAULT_JOB_SOURCES if source["enabled"]]
+        # Get enabled sources from database
+        enabled_sources_query = "SELECT id, name FROM job_sources WHERE enabled = true"
+        enabled_sources_result = db.execute(text(enabled_sources_query)).fetchall()
         
-        if not enabled_sources:
+        if not enabled_sources_result:
             return {
                 "success": False,
                 "message": "No job sources are enabled. Please enable at least one source."
             }
         
+        # Update sync times immediately for all enabled sources in database
+        current_sync_time = datetime.utcnow()
+        update_sync_query = """
+        UPDATE job_sources 
+        SET last_sync = :sync_time, updated_at = :sync_time 
+        WHERE enabled = true
+        """
+        
+        result = db.execute(text(update_sync_query), {"sync_time": current_sync_time})
+        rows_updated = result.rowcount
+        db.commit()
+        
+        print(f"\u2705 Updated sync times for {rows_updated} enabled sources to {current_sync_time}")
+        
         # Start background sync for all enabled sources
-        for source in enabled_sources:
+        for source_row in enabled_sources_result:
             background_tasks.add_task(
                 perform_job_sync, 
-                source["id"], 
-                source["name"], 
+                source_row.id, 
+                source_row.name, 
                 current_user.id, 
                 db
             )
         
-        source_names = [source["name"] for source in enabled_sources]
+        source_names = [row.name for row in enabled_sources_result]
         
         return {
             "success": True,
-            "message": f"Bulk sync started for {len(enabled_sources)} sources",
+            "message": f"Bulk sync started for {len(enabled_sources_result)} sources",
             "sources": source_names,
             "search_keywords": search_keywords,
             "estimated_duration": "5-15 minutes",
-            "status": "processing"
+            "status": "processing",
+            "sync_time_updated": current_sync_time.isoformat(),
+            "enabled_sources_count": len(enabled_sources_result)
         }
         
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Error starting bulk sync: {str(e)}")
+
+
+@router.get("/integrations/debug/sources-state")
+async def debug_sources_state():
+    """Debug endpoint to check current sources state"""
+    try:
+        sources_state = get_job_sources_state()
+        return {
+            "success": True,
+            "sources_count": len(sources_state),
+            "enabled_count": len([s for s in sources_state if s["enabled"]]),
+            "sources": sources_state,
+            "current_time": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Debug error: {str(e)}")
+
+
+@router.post("/integrations/debug/update-sync-times")
+async def debug_update_sync_times(db: Session = Depends(get_job_db)):
+    """Debug endpoint to manually update all enabled sources sync times to now"""
+    try:
+        current_time = datetime.utcnow()
+        update_query = """
+        UPDATE job_sources 
+        SET last_sync = :sync_time, updated_at = :sync_time 
+        WHERE enabled = true
+        """
+        
+        result = db.execute(text(update_query), {"sync_time": current_time})
+        rows_updated = result.rowcount
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Updated sync times for {rows_updated} enabled sources",
+            "sync_time": current_time.isoformat(),
+            "rows_updated": rows_updated
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Debug update error: {str(e)}")
+
+
+@router.post("/integrations/debug/reset-state")
+async def reset_sources_state():
+    """Reset the sources state for testing"""
+    global JOB_SOURCES_STATE
+    JOB_SOURCES_STATE = None
+    return {
+        "success": True,
+        "message": "Sources state reset successfully"
+    }
 
 
 @router.get("/integrations/stats")
@@ -737,9 +911,12 @@ async def get_integration_stats(
         
         overall_result = db.execute(text(overall_query)).fetchone()
         
-        # Get source-specific stats
+        # Get source stats from database
         source_stats = {}
-        for source in DEFAULT_JOB_SOURCES:
+        sources_query = "SELECT id, name FROM job_sources"
+        sources_result = db.execute(text(sources_query)).fetchall()
+        
+        for source_row in sources_result:
             source_query = """
             SELECT 
                 COUNT(*) as total_jobs,
@@ -750,7 +927,7 @@ async def get_integration_stats(
             WHERE ai_reasoning LIKE :source_pattern
             """
             
-            source_pattern = f"%{source['name']}%"
+            source_pattern = f"%{source_row.name}%"
             source_result = db.execute(text(source_query), {"source_pattern": source_pattern}).fetchone()
             
             if source_result:
@@ -758,7 +935,7 @@ async def get_integration_stats(
                 applied = source_result.applied_jobs or 0
                 success_rate = (applied / total * 100) if total > 0 else 0
                 
-                source_stats[source["id"]] = {
+                source_stats[source_row.id] = {
                     "total_jobs": total,
                     "applied_jobs": applied,
                     "avg_match_score": round(source_result.avg_match_score or 0, 1),
