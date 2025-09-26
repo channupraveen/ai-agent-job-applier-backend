@@ -20,6 +20,7 @@ from src.external_jobs_routes import router as external_jobs_router
 from src.browser_automation_routes import router as browser_automation_router
 from src.analytics_routes import router as analytics_router
 from src.notification_routes import router as notification_router
+from src.integrations_routes import router as integrations_router
 
 from src.database import init_database, check_database
 
@@ -89,6 +90,7 @@ app.include_router(external_jobs_router, prefix="/api/v1", tags=["External Job I
 app.include_router(browser_automation_router, prefix="/api/v1", tags=["Browser Automation"])
 app.include_router(analytics_router, prefix="/api/v1", tags=["Analytics & Reporting"])
 app.include_router(notification_router, prefix="/api/v1", tags=["Notifications"])
+app.include_router(integrations_router, prefix="/api/v1", tags=["Job Source Integrations"])
 
 @app.get("/")
 async def root():

@@ -47,6 +47,10 @@ class UserProfile(Base):
     max_applications_per_day = Column(Integer, default=10)
     preferred_job_types = Column(Text)  # JSON array: remote, onsite, hybrid
     
+    # Integration settings - ✅ Added for integrations component
+    job_sources_config = Column(Text)  # JSON config for job sources
+    sync_preferences = Column(Text)    # JSON config for sync preferences
+    
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)

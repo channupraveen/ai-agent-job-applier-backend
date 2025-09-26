@@ -1,0 +1,8 @@
+# Additional requirements for LinkedIn scraping
+playwright==1.40.0
+lxml==4.9.3
+beautifulsoup4==4.12.2
+fake-useragent==1.4.0
+
+# Install playwright browsers after installing playwright:
+# playwright install chromium
