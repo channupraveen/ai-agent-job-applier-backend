@@ -309,12 +309,14 @@ async def sync_job_source(
         
         background_tasks.add_task(perform_job_sync, source_id, source.name, current_user.id, db)
         
+        # Since the sync runs in background, we'll return immediately with basic info
+        # The frontend will refresh the job sources after a delay to get updated counts
         return {
             "success": True,
-            "message": f"Sync completed for {source.name}",
+            "message": f"Sync started for {source.name}",
             "source_id": source_id,
             "jobs_found": 0,  # Will be updated by background task
-            "new_jobs": 0,    # Will be updated by background task
+            "jobs_saved": 0,  # Will be updated by background task - frontend will get this from refresh
             "search_keywords": search_keywords,
             "estimated_duration": "2-5 minutes",
             "status": "processing"
