@@ -90,6 +90,150 @@ DEFAULT_JOB_SOURCES = [
         "totalJobs": 0,
         "status": "inactive",
         "icon": "pi pi-linkedin"
+    },
+    {
+        "id": "foundit",
+        "name": "Foundit (Monster India)",
+        "enabled": True,
+        "apiKey": "",
+        "baseUrl": "https://www.foundit.in",
+        "rateLimit": 300,
+        "lastSync": None,
+        "totalJobs": 0,
+        "status": "active",
+        "icon": "pi pi-star"
+    },
+    {
+        "id": "shine",
+        "name": "Shine.com",
+        "enabled": True,
+        "apiKey": "",
+        "baseUrl": "https://www.shine.com",
+        "rateLimit": 250,
+        "lastSync": None,
+        "totalJobs": 0,
+        "status": "active",
+        "icon": "pi pi-sun"
+    },
+    {
+        "id": "freshersjobs",
+        "name": "Freshers Jobs",
+        "enabled": True,
+        "apiKey": "",
+        "baseUrl": "https://www.freshersworld.com",
+        "rateLimit": 200,
+        "lastSync": None,
+        "totalJobs": 0,
+        "status": "active",
+        "icon": "pi pi-users"
+    },
+    {
+        "id": "internshala",
+        "name": "Internshala",
+        "enabled": True,
+        "apiKey": "",
+        "baseUrl": "https://internshala.com",
+        "rateLimit": 150,
+        "lastSync": None,
+        "totalJobs": 0,
+        "status": "active",
+        "icon": "pi pi-book"
+    },
+    {
+        "id": "instahyre",
+        "name": "Instahyre",
+        "enabled": True,
+        "apiKey": "",
+        "baseUrl": "https://www.instahyre.com",
+        "rateLimit": 200,
+        "lastSync": None,
+        "totalJobs": 0,
+        "status": "active",
+        "icon": "pi pi-bolt"
+    },
+    {
+        "id": "angellist",
+        "name": "AngelList (Wellfound)",
+        "enabled": True,
+        "apiKey": "",
+        "baseUrl": "https://wellfound.com",
+        "rateLimit": 100,
+        "lastSync": None,
+        "totalJobs": 0,
+        "status": "active",
+        "icon": "pi pi-heart"
+    },
+    {
+        "id": "apnacircle",
+        "name": "Apna Circle",
+        "enabled": True,
+        "apiKey": "",
+        "baseUrl": "https://apnacircle.com",
+        "rateLimit": 150,
+        "lastSync": None,
+        "totalJobs": 0,
+        "status": "active",
+        "icon": "pi pi-users"
+    },
+    {
+        "id": "hirist",
+        "name": "Hirist (Tech Jobs)",
+        "enabled": True,
+        "apiKey": "",
+        "baseUrl": "https://www.hirist.com",
+        "rateLimit": 200,
+        "lastSync": None,
+        "totalJobs": 0,
+        "status": "active",
+        "icon": "pi pi-desktop"
+    },
+    {
+        "id": "jobhai",
+        "name": "JobHai",
+        "enabled": True,
+        "apiKey": "",
+        "baseUrl": "https://www.jobhai.com",
+        "rateLimit": 150,
+        "lastSync": None,
+        "totalJobs": 0,
+        "status": "active",
+        "icon": "pi pi-map"
+    },
+    {
+        "id": "cutshort",
+        "name": "Cutshort",
+        "enabled": True,
+        "apiKey": "",
+        "baseUrl": "https://cutshort.io",
+        "rateLimit": 100,
+        "lastSync": None,
+        "totalJobs": 0,
+        "status": "active",
+        "icon": "pi pi-filter"
+    },
+    {
+        "id": "jobsearch",
+        "name": "Job Search India",
+        "enabled": False,
+        "apiKey": "",
+        "baseUrl": "https://www.jobsearchindia.com",
+        "rateLimit": 100,
+        "lastSync": None,
+        "totalJobs": 0,
+        "status": "inactive",
+        "icon": "pi pi-compass"
+    },
+    {
+        "id": "govtjobs",
+        "name": "Government Jobs India",
+        "enabled": False,
+        "apiKey": "",
+        "baseUrl": "https://www.sarkariresult.com",
+        "rateLimit": 50,
+        "lastSync": None,
+        "totalJobs": 0,
+        "status": "inactive",
+        "icon": "pi pi-building"
     }
 ]
 
@@ -274,6 +418,43 @@ async def perform_job_sync(source_id: str, source_name: str, user_id: int, db: S
             preferred_location = search_locations[0] if search_locations else "Remote"
             mock_request = MockRequest(search_keywords, preferred_location, search_experience)
             jobs = await simulate_linkedin_search(mock_request)
+        
+        # New job sources - Add simulation functions for each
+        elif source_id == "foundit":
+            jobs = await simulate_foundit_search(search_keywords, search_locations, search_experience)
+        
+        elif source_id == "shine":
+            jobs = await simulate_shine_search(search_keywords, search_locations, search_experience)
+            
+        elif source_id == "freshersjobs":
+            jobs = await simulate_freshers_search(search_keywords, search_locations, search_experience)
+            
+        elif source_id == "internshala":
+            jobs = await simulate_internshala_search(search_keywords, search_locations, search_experience)
+            
+        elif source_id == "instahyre":
+            jobs = await simulate_instahyre_search(search_keywords, search_locations, search_experience)
+            
+        elif source_id == "angellist":
+            jobs = await simulate_angellist_search(search_keywords, search_locations, search_experience)
+            
+        elif source_id == "apnacircle":
+            jobs = await simulate_apnacircle_search(search_keywords, search_locations, search_experience)
+            
+        elif source_id == "hirist":
+            jobs = await simulate_hirist_search(search_keywords, search_locations, search_experience)
+            
+        elif source_id == "jobhai":
+            jobs = await simulate_jobhai_search(search_keywords, search_locations, search_experience)
+            
+        elif source_id == "cutshort":
+            jobs = await simulate_cutshort_search(search_keywords, search_locations, search_experience)
+            
+        elif source_id == "jobsearch":
+            jobs = await simulate_jobsearch_search(search_keywords, search_locations, search_experience)
+            
+        elif source_id == "govtjobs":
+            jobs = await simulate_govtjobs_search(search_keywords, search_locations, search_experience)
         
         else:
             print(f"Unknown source: {source_id}")
@@ -640,3 +821,355 @@ async def reset_integrations(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error resetting integrations: {str(e)}")
+
+
+# ===================================
+# SIMULATION FUNCTIONS FOR NEW JOB SOURCES
+# ===================================
+
+async def simulate_foundit_search(keywords: str, locations: list, experience: str) -> list:
+    """Simulate Foundit (Monster India) job search"""
+    import random
+    import asyncio
+    
+    await asyncio.sleep(1)
+    
+    companies = ["Monster India", "Randstad India", "ManpowerGroup India", "Kelly Services", "ABC Consultants", "TeamLease Services", "Adecco India"]
+    titles = [f"Senior {keywords} Developer", f"{keywords} Engineer", f"{keywords} Consultant", f"Lead {keywords} Specialist"]
+    salaries = ["₹8,00,000 - ₹15,00,000", "₹10,00,000 - ₹18,00,000", "₹12,00,000 - ₹22,00,000"]
+    
+    jobs = []
+    location = locations[0] if locations else "Mumbai"
+    
+    for i in range(random.randint(10, 18)):
+        jobs.append({
+            "title": random.choice(titles),
+            "company": random.choice(companies),
+            "location": location,
+            "url": f"https://foundit.in/jobs/{60000000 + i}",
+            "description": f"Exciting {keywords} opportunity with growth potential.",
+            "requirements": f"{keywords}, {experience} level experience, Team collaboration",
+            "salary": random.choice(salaries),
+            "posted_date": "2 days ago"
+        })
+    
+    return jobs
+
+
+async def simulate_shine_search(keywords: str, locations: list, experience: str) -> list:
+    """Simulate Shine.com job search"""
+    import random
+    import asyncio
+    
+    await asyncio.sleep(1)
+    
+    companies = ["Shine Solutions", "Tech Shine", "Bright Careers", "Shine Tech", "Global Shine", "Shine Innovations", "Next Shine"]
+    titles = [f"{keywords} Developer", f"Senior {keywords} Engineer", f"{keywords} Architect", f"{keywords} Lead"]
+    salaries = ["₹6,00,000 - ₹12,00,000", "₹8,00,000 - ₹14,00,000", "₹10,00,000 - ₹16,00,000"]
+    
+    jobs = []
+    location = locations[0] if locations else "Chennai"
+    
+    for i in range(random.randint(8, 15)):
+        jobs.append({
+            "title": random.choice(titles),
+            "company": random.choice(companies),
+            "location": location,
+            "url": f"https://shine.com/job/{70000000 + i}",
+            "description": f"Great opportunity for {keywords} professionals to shine.",
+            "requirements": f"Strong {keywords} skills, {experience} experience, Problem-solving",
+            "salary": random.choice(salaries),
+            "posted_date": "1 day ago"
+        })
+    
+    return jobs
+
+
+async def simulate_freshers_search(keywords: str, locations: list, experience: str) -> list:
+    """Simulate Freshers Jobs search"""
+    import random
+    import asyncio
+    
+    await asyncio.sleep(1)
+    
+    companies = ["Fresher Opportunities", "New Grad Tech", "Entry Level Corp", "Campus Connect", "Graduate Hub", "Fresher Focus"]
+    titles = [f"Junior {keywords} Developer", f"Trainee {keywords} Engineer", f"Associate {keywords} Consultant", f"Entry Level {keywords}"]
+    salaries = ["₹3,00,000 - ₹6,00,000", "₹4,00,000 - ₹7,00,000", "₹5,00,000 - ₹8,00,000"]
+    
+    jobs = []
+    location = locations[0] if locations else "Pune"
+    
+    for i in range(random.randint(12, 20)):
+        jobs.append({
+            "title": random.choice(titles),
+            "company": random.choice(companies),
+            "location": location,
+            "url": f"https://freshersworld.com/job/{80000000 + i}",
+            "description": f"Perfect entry-level opportunity for fresh {keywords} graduates.",
+            "requirements": f"Basic {keywords} knowledge, Willingness to learn, Fresh graduate",
+            "salary": random.choice(salaries),
+            "posted_date": "3 days ago"
+        })
+    
+    return jobs
+
+
+async def simulate_internshala_search(keywords: str, locations: list, experience: str) -> list:
+    """Simulate Internshala job search"""
+    import random
+    import asyncio
+    
+    await asyncio.sleep(1)
+    
+    companies = ["Internshala", "Student Connect", "Campus Jobs", "Intern Hub", "Learning Lab", "Skill Builder"]
+    titles = [f"{keywords} Intern", f"{keywords} Trainee", f"Junior {keywords} Associate", f"{keywords} Graduate Trainee"]
+    salaries = ["₹15,000 - ₹25,000 per month", "₹20,000 - ₹30,000 per month", "₹25,000 - ₹35,000 per month"]
+    
+    jobs = []
+    location = locations[0] if locations else "Bangalore"
+    
+    for i in range(random.randint(6, 12)):
+        jobs.append({
+            "title": random.choice(titles),
+            "company": random.choice(companies),
+            "location": location,
+            "url": f"https://internshala.com/internship/{90000000 + i}",
+            "description": f"Learn and grow with this {keywords} internship opportunity.",
+            "requirements": f"{keywords} basics, Student/Recent graduate, Eagerness to learn",
+            "salary": random.choice(salaries),
+            "posted_date": "5 days ago"
+        })
+    
+    return jobs
+
+
+async def simulate_instahyre_search(keywords: str, locations: list, experience: str) -> list:
+    """Simulate Instahyre job search"""
+    import random
+    import asyncio
+    
+    await asyncio.sleep(1)
+    
+    companies = ["Instahyre Tech", "Quick Hire Solutions", "Rapid Recruitment", "Fast Track Careers", "Instant Opportunities", "Speed Hire"]
+    titles = [f"Senior {keywords} Developer", f"{keywords} Tech Lead", f"Principal {keywords} Engineer", f"{keywords} Solution Architect"]
+    salaries = ["₹12,00,000 - ₹20,00,000", "₹15,00,000 - ₹25,00,000", "₹18,00,000 - ₹30,00,000"]
+    
+    jobs = []
+    location = locations[0] if locations else "Gurgaon"
+    
+    for i in range(random.randint(8, 14)):
+        jobs.append({
+            "title": random.choice(titles),
+            "company": random.choice(companies),
+            "location": location,
+            "url": f"https://instahyre.com/job/{100000000 + i}",
+            "description": f"Fast-track your {keywords} career with top companies.",
+            "requirements": f"Advanced {keywords} skills, {experience} experience, Leadership potential",
+            "salary": random.choice(salaries),
+            "posted_date": "1 day ago"
+        })
+    
+    return jobs
+
+
+async def simulate_angellist_search(keywords: str, locations: list, experience: str) -> list:
+    """Simulate AngelList (Wellfound) job search"""
+    import random
+    import asyncio
+    
+    await asyncio.sleep(1)
+    
+    companies = ["Startup Angel", "Innovation Labs", "Venture Tech", "Growth Co", "Disrupt Inc", "Scale Up"]
+    titles = [f"Senior {keywords} Engineer", f"{keywords} Tech Lead", f"Full Stack {keywords} Developer", f"{keywords} Product Engineer"]
+    salaries = ["₹10,00,000 - ₹18,00,000 + Equity", "₹14,00,000 - ₹22,00,000 + Equity", "₹16,00,000 - ₹26,00,000 + Equity"]
+    
+    jobs = []
+    location = locations[0] if locations else "Bangalore"
+    
+    for i in range(random.randint(5, 10)):
+        jobs.append({
+            "title": random.choice(titles),
+            "company": random.choice(companies),
+            "location": location,
+            "url": f"https://wellfound.com/job/{110000000 + i}",
+            "description": f"Join an exciting startup as a {keywords} professional with equity opportunities.",
+            "requirements": f"{keywords} expertise, Startup experience preferred, Equity-minded",
+            "salary": random.choice(salaries),
+            "posted_date": "2 days ago"
+        })
+    
+    return jobs
+
+
+async def simulate_apnacircle_search(keywords: str, locations: list, experience: str) -> list:
+    """Simulate Apna Circle job search"""
+    import random
+    import asyncio
+    
+    await asyncio.sleep(1)
+    
+    companies = ["Apna Solutions", "Circle Tech", "Local Jobs Hub", "Community Work", "Neighborhood Opportunities", "Local Connect"]
+    titles = [f"{keywords} Specialist", f"Local {keywords} Expert", f"{keywords} Community Leader", f"Regional {keywords} Manager"]
+    salaries = ["₹5,00,000 - ₹10,00,000", "₹6,00,000 - ₹12,00,000", "₹8,00,000 - ₹14,00,000"]
+    
+    jobs = []
+    location = locations[0] if locations else "Delhi"
+    
+    for i in range(random.randint(6, 12)):
+        jobs.append({
+            "title": random.choice(titles),
+            "company": random.choice(companies),
+            "location": location,
+            "url": f"https://apnacircle.com/job/{120000000 + i}",
+            "description": f"Local {keywords} opportunity with community impact.",
+            "requirements": f"{keywords} skills, Local market knowledge, Community engagement",
+            "salary": random.choice(salaries),
+            "posted_date": "4 days ago"
+        })
+    
+    return jobs
+
+
+async def simulate_hirist_search(keywords: str, locations: list, experience: str) -> list:
+    """Simulate Hirist (Tech Jobs) job search"""
+    import random
+    import asyncio
+    
+    await asyncio.sleep(1)
+    
+    companies = ["Tech Hirist", "IT Solutions Pro", "Code Experts", "Dev Masters", "Tech Innovators", "Digital Pioneers"]
+    titles = [f"{keywords} Software Engineer", f"Senior {keywords} Developer", f"{keywords} Technical Lead", f"{keywords} System Architect"]
+    salaries = ["₹8,00,000 - ₹16,00,000", "₹12,00,000 - ₹20,00,000", "₹15,00,000 - ₹25,00,000"]
+    
+    jobs = []
+    location = locations[0] if locations else "Hyderabad"
+    
+    for i in range(random.randint(10, 16)):
+        jobs.append({
+            "title": random.choice(titles),
+            "company": random.choice(companies),
+            "location": location,
+            "url": f"https://hirist.com/job/{130000000 + i}",
+            "description": f"Technical excellence opportunity for {keywords} professionals.",
+            "requirements": f"Strong {keywords} background, Technical expertise, Innovation mindset",
+            "salary": random.choice(salaries),
+            "posted_date": "2 days ago"
+        })
+    
+    return jobs
+
+
+async def simulate_jobhai_search(keywords: str, locations: list, experience: str) -> list:
+    """Simulate JobHai job search"""
+    import random
+    import asyncio
+    
+    await asyncio.sleep(1)
+    
+    companies = ["JobHai Solutions", "Career Hub", "Employment Plus", "Job Connect", "Work Opportunities", "Career Bridge"]
+    titles = [f"{keywords} Professional", f"{keywords} Associate", f"Senior {keywords} Analyst", f"{keywords} Team Lead"]
+    salaries = ["₹6,00,000 - ₹11,00,000", "₹7,00,000 - ₹13,00,000", "₹9,00,000 - ₹15,00,000"]
+    
+    jobs = []
+    location = locations[0] if locations else "Mumbai"
+    
+    for i in range(random.randint(8, 14)):
+        jobs.append({
+            "title": random.choice(titles),
+            "company": random.choice(companies),
+            "location": location,
+            "url": f"https://jobhai.com/job/{140000000 + i}",
+            "description": f"Advance your {keywords} career with established companies.",
+            "requirements": f"{keywords} experience, Professional growth mindset, Team player",
+            "salary": random.choice(salaries),
+            "posted_date": "3 days ago"
+        })
+    
+    return jobs
+
+
+async def simulate_cutshort_search(keywords: str, locations: list, experience: str) -> list:
+    """Simulate Cutshort job search"""
+    import random
+    import asyncio
+    
+    await asyncio.sleep(1)
+    
+    companies = ["Cutshort Tech", "Quick Match Solutions", "Talent Bridge", "Skill Connect", "Direct Hire", "Smart Recruiting"]
+    titles = [f"{keywords} Engineer", f"Full Stack {keywords} Developer", f"{keywords} Product Engineer", f"Senior {keywords} Consultant"]
+    salaries = ["₹10,00,000 - ₹18,00,000", "₹13,00,000 - ₹21,00,000", "₹15,00,000 - ₹24,00,000"]
+    
+    jobs = []
+    location = locations[0] if locations else "Bangalore"
+    
+    for i in range(random.randint(6, 12)):
+        jobs.append({
+            "title": random.choice(titles),
+            "company": random.choice(companies),
+            "location": location,
+            "url": f"https://cutshort.io/job/{150000000 + i}",
+            "description": f"Direct hiring opportunity for {keywords} experts.",
+            "requirements": f"Expert {keywords} skills, Direct communication, Results-driven",
+            "salary": random.choice(salaries),
+            "posted_date": "1 day ago"
+        })
+    
+    return jobs
+
+
+async def simulate_jobsearch_search(keywords: str, locations: list, experience: str) -> list:
+    """Simulate Job Search India job search"""
+    import random
+    import asyncio
+    
+    await asyncio.sleep(1)
+    
+    companies = ["Search Solutions", "Job Portal India", "Career Search Hub", "Employment Search", "Job Finder India", "Search Connect"]
+    titles = [f"{keywords} Specialist", f"{keywords} Expert", f"Senior {keywords} Professional", f"{keywords} Consultant"]
+    salaries = ["₹5,00,000 - ₹9,00,000", "₹6,00,000 - ₹11,00,000", "₹8,00,000 - ₹13,00,000"]
+    
+    jobs = []
+    location = locations[0] if locations else "Kolkata"
+    
+    for i in range(random.randint(7, 13)):
+        jobs.append({
+            "title": random.choice(titles),
+            "company": random.choice(companies),
+            "location": location,
+            "url": f"https://jobsearchindia.com/job/{160000000 + i}",
+            "description": f"Search and find the perfect {keywords} role for your career.",
+            "requirements": f"{keywords} knowledge, Search skills, Analytical thinking",
+            "salary": random.choice(salaries),
+            "posted_date": "4 days ago"
+        })
+    
+    return jobs
+
+
+async def simulate_govtjobs_search(keywords: str, locations: list, experience: str) -> list:
+    """Simulate Government Jobs India job search"""
+    import random
+    import asyncio
+    
+    await asyncio.sleep(1)
+    
+    companies = ["Central Govt", "State Govt", "Public Sector", "Government Agency", "Ministry Office", "Public Service Commission"]
+    titles = [f"Government {keywords} Officer", f"Public Sector {keywords} Engineer", f"{keywords} Technical Assistant", f"Govt {keywords} Specialist"]
+    salaries = ["₹4,00,000 - ₹8,00,000", "₹5,00,000 - ₹9,00,000", "₹6,00,000 - ₹10,00,000"]
+    
+    jobs = []
+    location = locations[0] if locations else "New Delhi"
+    
+    for i in range(random.randint(4, 8)):
+        jobs.append({
+            "title": random.choice(titles),
+            "company": random.choice(companies),
+            "location": location,
+            "url": f"https://sarkariresult.com/job/{170000000 + i}",
+            "description": f"Government opportunity for {keywords} professionals with job security.",
+            "requirements": f"{keywords} qualification, Government exam, Indian citizen",
+            "salary": random.choice(salaries),
+            "posted_date": "1 week ago"
+        })
+    
+    return jobs
