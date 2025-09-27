@@ -25,6 +25,7 @@ class UserProfile(Base):
     google_id = Column(String(255), unique=True)  # For Google OAuth
     auth_provider = Column(String(20), default="email")  # email or google
     is_active = Column(Boolean, default=True)
+    role = Column(String(20), default="user")  # user, admin, moderator
     
     # Professional info
     current_title = Column(String(255))

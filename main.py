@@ -21,6 +21,8 @@ from src.browser_automation_routes import router as browser_automation_router
 from src.analytics_routes import router as analytics_router
 from src.notification_routes import router as notification_router
 from src.integrations_routes import router as integrations_router
+# Import admin routes
+from src.admin.admin_routes import admin_router
 
 from src.database import init_database, check_database
 
@@ -91,6 +93,9 @@ app.include_router(browser_automation_router, prefix="/api/v1", tags=["Browser A
 app.include_router(analytics_router, prefix="/api/v1", tags=["Analytics & Reporting"])
 app.include_router(notification_router, prefix="/api/v1", tags=["Notifications"])
 app.include_router(integrations_router, prefix="/api/v1", tags=["Job Source Integrations"])
+
+# Include admin routes - Role-based access
+app.include_router(admin_router, prefix="/api/v1", tags=["Admin Panel"])
 
 @app.get("/")
 async def root():

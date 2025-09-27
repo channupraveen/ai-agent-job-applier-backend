@@ -15,11 +15,12 @@ class IndianJobAggregator:
     
     def _check_available_sources(self):
         """Check which scrapers are available"""
-        try:
-            from .naukri_scraper import NaukriJobScraper
-            self.sources_available.append(('naukri', NaukriJobScraper))
-        except ImportError:
-            pass
+        # Skip Naukri for now due to bs4 dependency issues
+        # try:
+        #     from .naukri_scraper import NaukriJobScraper
+        #     self.sources_available.append(('naukri', NaukriJobScraper))
+        # except ImportError:
+        #     pass
         
         try:
             from .indeed_india_rss import IndeedIndiaRSSFetcher, IndeedMultiLocationFetcher

@@ -44,6 +44,7 @@ def verify_token(token: str) -> dict:
     try:
         payload = jwt.decode(token, config.SECRET_KEY, algorithms=[config.ALGORITHM])
         user_id: str = payload.get("sub")
+        user_role: str = payload.get("role", "user")  # Get role from token
         if user_id is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -51,7 +52,7 @@ def verify_token(token: str) -> dict:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         # Convert string user_id to integer for database query
-        return {"user_id": int(user_id)}
+        return {"user_id": int(user_id), "role": user_role}
     except (JWTError, ValueError):  # Added ValueError for int conversion
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -79,6 +80,23 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         )
     
     return user
+
+async def get_current_admin_user(current_user: Optional[object] = Depends(get_current_user)):
+    """Get current user and verify admin role"""
+    if not current_user or current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user
+
+def require_admin_role(user_role: str):
+    """Helper function to check if user has admin role"""
+    if user_role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
 
 def generate_random_password() -> str:
     """Generate a random password for OAuth users"""

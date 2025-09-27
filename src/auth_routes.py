@@ -58,6 +58,7 @@ class UserResponse(BaseModel):
     email: str
     current_title: Optional[str]
     auth_provider: str
+    role: str
     created_at: datetime
 
 @auth_router.post("/register", response_model=Token)
@@ -94,8 +95,11 @@ async def register_user(user_data: UserRegister):
         db_session.commit()
         db_session.refresh(new_user)
         
-        # Create access token
-        access_token = create_access_token(data={"sub": str(new_user.id)})
+        # Create access token with role
+        access_token = create_access_token(data={
+            "sub": str(new_user.id),
+            "role": new_user.role
+        })
         
         return {
             "access_token": access_token,
@@ -105,7 +109,8 @@ async def register_user(user_data: UserRegister):
                 "name": new_user.name,
                 "email": new_user.email,
                 "current_title": new_user.current_title,
-                "auth_provider": new_user.auth_provider
+                "auth_provider": new_user.auth_provider,
+                "role": new_user.role
             }
         }
         
@@ -147,8 +152,11 @@ async def login_user(user_credentials: UserLogin):
         user.last_login = datetime.utcnow()
         db_session.commit()
         
-        # Create access token
-        access_token = create_access_token(data={"sub": str(user.id)})
+        # Create access token with role
+        access_token = create_access_token(data={
+            "sub": str(user.id),
+            "role": user.role
+        })
         
         return {
             "access_token": access_token,
@@ -158,7 +166,8 @@ async def login_user(user_credentials: UserLogin):
                 "name": user.name,
                 "email": user.email,
                 "current_title": user.current_title,
-                "auth_provider": user.auth_provider
+                "auth_provider": user.auth_provider,
+                "role": user.role
             }
         }
         
@@ -174,6 +183,7 @@ async def get_current_user_profile(current_user: UserProfile = Depends(get_curre
         email=current_user.email,
         current_title=current_user.current_title,
         auth_provider=current_user.auth_provider,
+        role=current_user.role,
         created_at=current_user.created_at
     )
 
