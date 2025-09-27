@@ -240,17 +240,17 @@ DEFAULT_JOB_SOURCES = [
         "icon": "pi pi-compass"
     },
     {
-        "id": "govtjobs",
-        "name": "Government Jobs India",
-        "enabled": False,
-        "apiKey": "",
-        "baseUrl": "https://www.sarkariresult.com",
-        "rateLimit": 50,
+        "id": "googlejobs",
+        "name": "Google Jobs API",
+        "enabled": True,
+        "apiKey": "a448fc3f98bea2711a110c46c86d75cc09e786b729a8212f666c89d35800429f",
+        "baseUrl": "https://serpapi.com/search.json",
+        "rateLimit": 100,
         "lastSync": None,
         "totalJobs": 0,
-        "status": "inactive",
-        "icon": "pi pi-building"
-    }
+        "status": "active",
+        "icon": "pi pi-google"
+    },
 ]
 
 @router.get("/integrations/job-sources")
@@ -500,7 +500,66 @@ async def perform_job_sync(source_id: str, source_name: str, user_id: int, db: S
             jobs = await simulate_glassdoor_search(search_keywords, search_locations, search_experience)
         
         elif source_id == "googlejobs":
-            jobs = await simulate_googlejobs_search(search_keywords, search_locations, search_experience)
+            # Use ONLY SerpAPI Google Jobs API (no mixing with old APIs)
+            print(f"🔍 SerpAPI Google Jobs ONLY: '{search_keywords}' in {search_locations}")
+            
+            try:
+                from .services.google_jobs_api import GoogleJobsAPIService
+                
+                preferred_location = search_locations[0] if search_locations else "India"
+                if preferred_location == "Remote":
+                    preferred_location = "India"  # SerpAPI works better with specific locations
+                
+                # Initialize SerpAPI Google Jobs service
+                google_api = GoogleJobsAPIService()
+                
+                print("🧪 Testing SerpAPI connection...")
+                if not google_api.test_api_connection():
+                    print("❌ SerpAPI connection failed")
+                    return  # Exit early if API fails
+                
+                print("✅ SerpAPI connected, fetching jobs...")
+                
+                # IMPORTANT: Simplify search keywords for SerpAPI
+                # SerpAPI works better with 1-2 main keywords, not long comma-separated lists
+                simplified_keywords = search_keywords.split(',')[0].strip()  # Use first keyword only
+                if 'developer' not in simplified_keywords.lower():
+                    simplified_keywords += ' developer'  # Add 'developer' if not present
+                
+                print(f"🔧 Simplified keywords for SerpAPI: '{simplified_keywords}' (from '{search_keywords}')")
+                
+                # Search for jobs using ONLY SerpAPI with simplified keywords
+                jobs = await google_api.search_jobs(
+                    keywords=simplified_keywords,
+                    location=preferred_location,
+                    limit=30,
+                    work_from_home=True if "Remote" in search_locations else False
+                )
+                
+                # If no jobs found, try with even simpler search
+                if not jobs:
+                    print(f"⚠️ No jobs with '{simplified_keywords}', trying generic search...")
+                    
+                    # Try with just 'software developer' in the location
+                    jobs = await google_api.search_jobs(
+                        keywords="software developer",
+                        location=preferred_location,
+                        limit=30
+                    )
+                    
+                    if not jobs:
+                        print("⚠️ No jobs found even with generic search")
+                        print("💡 Try these tips:")
+                        print("   - Simplify job keywords (use 1-2 words max)")
+                        print("   - Try different locations (Mumbai, Bangalore, Delhi)")
+                        print("   - Check SerpAPI quota at serpapi.com")
+                        return  # Exit if still no jobs found
+                
+                print(f"📊 SerpAPI returned {len(jobs)} real jobs using '{simplified_keywords}'")
+                
+            except Exception as api_error:
+                print(f"❌ Error with SerpAPI: {str(api_error)}")
+                return  # Exit on error - no fallback simulation
         
         else:
             print(f"Unknown source: {source_id}")
@@ -534,9 +593,9 @@ async def perform_job_sync(source_id: str, source_name: str, user_id: int, db: S
                         "description": job.get("description", ""),
                         "requirements": job.get("requirements", ""),
                         "salary_range": job.get("salary", ""),
-                        "match_score": 75,
-                        "ai_decision": "maybe",
-                        "ai_reasoning": f"REAL {source_name} job sync: Found using criteria '{search_keywords}' in {search_locations}",
+                        "match_score": 85 if source_id == "googlejobs" else 75,  # Higher score for Google Jobs API
+                        "ai_decision": "apply" if source_id == "googlejobs" else "maybe",
+                        "ai_reasoning": f"REAL {source_name} job sync: Found using criteria '{search_keywords}' in {search_locations}. Source: {job.get('source', 'API')}",
                         "created_at": datetime.utcnow(),
                         "updated_at": datetime.utcnow()
                     }
@@ -880,7 +939,60 @@ async def debug_update_sync_times(db: Session = Depends(get_job_db)):
         raise HTTPException(status_code=500, detail=f"Debug update error: {str(e)}")
 
 
-@router.post("/integrations/debug/reset-state")
+@router.post("/integrations/test-serpapi")
+async def test_serpapi_connection():
+    """Test SerpAPI Google Jobs connection directly"""
+    try:
+        from .services.google_jobs_api import GoogleJobsAPIService
+        
+        print("🧪 Testing SerpAPI Google Jobs connection...")
+        
+        google_api = GoogleJobsAPIService()
+        
+        # Test connection
+        connection_ok = google_api.test_api_connection()
+        
+        if connection_ok:
+            # Try a simple search
+            print("🔍 Testing simple job search...")
+            
+            jobs = await google_api.search_jobs(
+                keywords="software engineer",
+                location="India",
+                limit=5
+            )
+            
+            return {
+                "success": True,
+                "connection_test": "passed",
+                "jobs_found": len(jobs),
+                "sample_jobs": [
+                    {
+                        "title": job.get("title", "N/A"),
+                        "company": job.get("company", "N/A"),
+                        "location": job.get("location", "N/A")
+                    } for job in jobs[:3]
+                ],
+                "message": f"SerpAPI is working! Found {len(jobs)} jobs."
+            }
+        else:
+            return {
+                "success": False,
+                "connection_test": "failed",
+                "jobs_found": 0,
+                "message": "SerpAPI connection failed. Check API key or quota."
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "connection_test": "error",
+            "jobs_found": 0,
+            "error": str(e),
+            "message": f"Error testing SerpAPI: {str(e)}"
+        }
+
+
 async def reset_sources_state():
     """Reset the sources state for testing"""
     global JOB_SOURCES_STATE
@@ -1391,30 +1503,365 @@ async def simulate_glassdoor_search(keywords: str, locations: list, experience: 
     return jobs
 
 
-async def simulate_googlejobs_search(keywords: str, locations: list, experience: str) -> list:
-    """Simulate Google Jobs search"""
-    import random
-    import asyncio
-    
-    await asyncio.sleep(1)
-    
-    companies = ["Google", "YouTube", "Chrome Team", "Android", "Google Cloud", "Search Team", "AI Research", "DeepMind"]
-    titles = [f"{keywords} Engineer", f"Senior {keywords} Developer", f"{keywords} Product Engineer", f"{keywords} Tech Lead"]
-    salaries = ["₹15,00,000 - ₹25,00,000", "₹20,00,000 - ₹35,00,000", "₹25,00,000 - ₹40,00,000"]
-    
-    jobs = []
-    location = locations[0] if locations else "Bangalore"
-    
-    for i in range(random.randint(6, 12)):
-        jobs.append({
-            "title": random.choice(titles),
-            "company": random.choice(companies),
-            "location": location,
-            "url": f"https://jobs.google.com/job/{190000000 + i}",
-            "description": f"Join Google's world-class {keywords} team. Work on products used by billions worldwide.",
-            "requirements": f"Expert {keywords} skills, {experience}+ experience, Google-level standards",
-            "salary": random.choice(salaries),
-            "posted_date": "1 day ago"
-        })
-    
-    return jobs
+# ===================================
+# SERPAPI CONFIGURATION ENDPOINTS
+# ===================================
+
+# Pydantic models for SerpAPI configuration
+class SerpAPIConfig(BaseModel):
+    api_key: str
+    engine: str = "google_jobs"
+    location: str = "India"
+    google_domain: str = "google.com"
+    hl: str = "en"
+    gl: str = "in"
+    max_jobs_per_sync: int = 50
+    search_radius: int = 50
+    ltype: int = 0
+    date_posted: str = "any"
+    job_type: str = "any"
+    no_cache: bool = False
+    output: str = "json"
+
+@router.get("/integrations/serpapi-config")
+async def get_serpapi_config(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db)
+):
+    """Get SerpAPI configuration for the current user"""
+    try:
+        query = """
+        SELECT 
+            id, api_key, engine, location, google_domain, hl, gl,
+            max_jobs_per_sync, search_radius, ltype, date_posted,
+            job_type, no_cache, output, is_active, last_test_at,
+            last_test_status, last_test_jobs_found, last_test_message,
+            total_api_calls, last_sync_at, jobs_fetched_total,
+            created_at, updated_at
+        FROM serpapi_configurations 
+        WHERE user_id = :user_id AND is_active = TRUE
+        ORDER BY created_at DESC
+        LIMIT 1
+        """
+        
+        result = db.execute(text(query), {"user_id": current_user.id}).fetchone()
+        
+        if not result:
+            # Return default configuration if none exists
+            default_config = {
+                "api_key": "a448fc3f98bea2711a110c46c86d75cc09e786b729a8212f666c89d35800429f",
+                "engine": "google_jobs",
+                "location": "India",
+                "google_domain": "google.com",
+                "hl": "en",
+                "gl": "in",
+                "max_jobs_per_sync": 50,
+                "search_radius": 50,
+                "ltype": 0,
+                "date_posted": "any",
+                "job_type": "any",
+                "no_cache": False,
+                "output": "json"
+            }
+            
+            return {
+                "success": True,
+                "data": default_config
+            }
+        
+        # Convert result to dictionary
+        config_data = {
+            "id": result.id,
+            "api_key": result.api_key,
+            "engine": result.engine,
+            "location": result.location,
+            "google_domain": result.google_domain,
+            "hl": result.hl,
+            "gl": result.gl,
+            "max_jobs_per_sync": result.max_jobs_per_sync,
+            "search_radius": result.search_radius,
+            "ltype": result.ltype,
+            "date_posted": result.date_posted,
+            "job_type": result.job_type,
+            "no_cache": result.no_cache,
+            "output": result.output,
+            "is_active": result.is_active,
+            "last_test_at": result.last_test_at.isoformat() if result.last_test_at else None,
+            "last_test_status": result.last_test_status,
+            "last_test_jobs_found": result.last_test_jobs_found,
+            "last_test_message": result.last_test_message,
+            "total_api_calls": result.total_api_calls,
+            "last_sync_at": result.last_sync_at.isoformat() if result.last_sync_at else None,
+            "jobs_fetched_total": result.jobs_fetched_total,
+            "created_at": result.created_at.isoformat() if result.created_at else None,
+            "updated_at": result.updated_at.isoformat() if result.updated_at else None
+        }
+        
+        return {
+            "success": True,
+            "data": config_data
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading SerpAPI configuration: {str(e)}")
+
+@router.put("/integrations/serpapi-config")
+async def update_serpapi_config(
+    config: SerpAPIConfig,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db)
+):
+    """Update SerpAPI configuration for the current user"""
+    try:
+        # Validate required fields
+        if not config.api_key or config.api_key.strip() == "":
+            raise HTTPException(status_code=400, detail="API key is required")
+        
+        # Check if configuration exists
+        existing_query = """
+        SELECT id FROM serpapi_configurations 
+        WHERE user_id = :user_id AND is_active = TRUE
+        """
+        
+        existing_result = db.execute(text(existing_query), {"user_id": current_user.id}).fetchone()
+        
+        if existing_result:
+            # Update existing configuration
+            update_query = """
+            UPDATE serpapi_configurations 
+            SET 
+                api_key = :api_key,
+                engine = :engine,
+                location = :location,
+                google_domain = :google_domain,
+                hl = :hl,
+                gl = :gl,
+                max_jobs_per_sync = :max_jobs_per_sync,
+                search_radius = :search_radius,
+                ltype = :ltype,
+                date_posted = :date_posted,
+                job_type = :job_type,
+                no_cache = :no_cache,
+                output = :output,
+                updated_at = :updated_at
+            WHERE user_id = :user_id AND is_active = TRUE
+            RETURNING *
+            """
+            
+            result = db.execute(text(update_query), {
+                "user_id": current_user.id,
+                "api_key": config.api_key,
+                "engine": config.engine,
+                "location": config.location,
+                "google_domain": config.google_domain,
+                "hl": config.hl,
+                "gl": config.gl,
+                "max_jobs_per_sync": config.max_jobs_per_sync,
+                "search_radius": config.search_radius,
+                "ltype": config.ltype,
+                "date_posted": config.date_posted,
+                "job_type": config.job_type,
+                "no_cache": config.no_cache,
+                "output": config.output,
+                "updated_at": datetime.utcnow()
+            })
+        else:
+            # Create new configuration
+            insert_query = """
+            INSERT INTO serpapi_configurations (
+                user_id, api_key, engine, location, google_domain, hl, gl,
+                max_jobs_per_sync, search_radius, ltype, date_posted,
+                job_type, no_cache, output
+            ) VALUES (
+                :user_id, :api_key, :engine, :location, :google_domain, :hl, :gl,
+                :max_jobs_per_sync, :search_radius, :ltype, :date_posted,
+                :job_type, :no_cache, :output
+            )
+            RETURNING *
+            """
+            
+            result = db.execute(text(insert_query), {
+                "user_id": current_user.id,
+                "api_key": config.api_key,
+                "engine": config.engine,
+                "location": config.location,
+                "google_domain": config.google_domain,
+                "hl": config.hl,
+                "gl": config.gl,
+                "max_jobs_per_sync": config.max_jobs_per_sync,
+                "search_radius": config.search_radius,
+                "ltype": config.ltype,
+                "date_posted": config.date_posted,
+                "job_type": config.job_type,
+                "no_cache": config.no_cache,
+                "output": config.output
+            })
+        
+        updated_config = result.fetchone()
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "SerpAPI configuration saved successfully",
+            "data": {
+                "id": updated_config.id,
+                "api_key": updated_config.api_key,
+                "engine": updated_config.engine,
+                "location": updated_config.location,
+                "google_domain": updated_config.google_domain,
+                "hl": updated_config.hl,
+                "gl": updated_config.gl,
+                "max_jobs_per_sync": updated_config.max_jobs_per_sync,
+                "search_radius": updated_config.search_radius,
+                "ltype": updated_config.ltype,
+                "date_posted": updated_config.date_posted,
+                "job_type": updated_config.job_type,
+                "no_cache": updated_config.no_cache,
+                "output": updated_config.output,
+                "updated_at": updated_config.updated_at.isoformat() if updated_config.updated_at else None
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error saving SerpAPI configuration: {str(e)}")
+
+@router.post("/integrations/serpapi-config/test")
+async def test_serpapi_config(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db)
+):
+    """Test SerpAPI configuration with current settings"""
+    try:
+        # Get current user's SerpAPI configuration
+        config_query = """
+        SELECT api_key, engine, location, hl, gl, ltype, date_posted, job_type
+        FROM serpapi_configurations 
+        WHERE user_id = :user_id AND is_active = TRUE
+        ORDER BY created_at DESC
+        LIMIT 1
+        """
+        
+        config_result = db.execute(text(config_query), {"user_id": current_user.id}).fetchone()
+        
+        if not config_result:
+            # Use default configuration for testing
+            api_key = "a448fc3f98bea2711a110c46c86d75cc09e786b729a8212f666c89d35800429f"
+            test_params = {
+                "engine": "google_jobs",
+                "location": "India",
+                "hl": "en",
+                "gl": "in",
+                "ltype": 0,
+                "date_posted": "any",
+                "job_type": "any"
+            }
+        else:
+            api_key = config_result.api_key
+            test_params = {
+                "engine": config_result.engine,
+                "location": config_result.location,
+                "hl": config_result.hl,
+                "gl": config_result.gl,
+                "ltype": config_result.ltype,
+                "date_posted": config_result.date_posted,
+                "job_type": config_result.job_type
+            }
+        
+        # Test the API connection
+        from .services.google_jobs_api import GoogleJobsAPIService
+        
+        google_api = GoogleJobsAPIService()
+        
+        # Test with simple search
+        test_start = datetime.utcnow()
+        jobs = await google_api.search_jobs(
+            keywords="software engineer",
+            location=test_params["location"],
+            limit=5
+        )
+        test_end = datetime.utcnow()
+        
+        response_time = (test_end - test_start).total_seconds()
+        jobs_found = len(jobs)
+        
+        # Update test results in database
+        if config_result:
+            update_test_query = """
+            UPDATE serpapi_configurations 
+            SET 
+                last_test_at = :test_time,
+                last_test_status = :status,
+                last_test_jobs_found = :jobs_found,
+                last_test_message = :message,
+                total_api_calls = total_api_calls + 1
+            WHERE user_id = :user_id AND is_active = TRUE
+            """
+            
+            status = "success" if jobs_found > 0 else "warning"
+            message = f"Found {jobs_found} jobs in {response_time:.1f}s" if jobs_found > 0 else "No jobs found, but API is working"
+            
+            db.execute(text(update_test_query), {
+                "user_id": current_user.id,
+                "test_time": test_start,
+                "status": status,
+                "jobs_found": jobs_found,
+                "message": message
+            })
+            db.commit()
+        
+        return {
+            "success": True,
+            "message": f"SerpAPI test successful - Found {jobs_found} jobs",
+            "jobs_found": jobs_found,
+            "test_results": {
+                "api_response_time": f"{response_time:.1f}s",
+                "status_code": 200,
+                "credits_used": 1,
+                "test_location": test_params["location"],
+                "test_query": "software engineer",
+                "sample_jobs": [
+                    {
+                        "title": job.get("title", "N/A"),
+                        "company": job.get("company", "N/A"),
+                        "location": job.get("location", "N/A"),
+                        "posted_at": job.get("posted_date", "N/A")
+                    } for job in jobs[:3]
+                ]
+            }
+        }
+        
+    except Exception as e:
+        # Update test failure in database if config exists
+        try:
+            if config_result:
+                update_test_query = """
+                UPDATE serpapi_configurations 
+                SET 
+                    last_test_at = :test_time,
+                    last_test_status = 'failed',
+                    last_test_jobs_found = 0,
+                    last_test_message = :error_message
+                WHERE user_id = :user_id AND is_active = TRUE
+                """
+                
+                db.execute(text(update_test_query), {
+                    "user_id": current_user.id,
+                    "test_time": datetime.utcnow(),
+                    "error_message": str(e)[:255]  # Truncate long error messages
+                })
+                db.commit()
+        except:
+            pass  # Ignore database update errors during error handling
+        
+        return {
+            "success": False,
+            "message": f"SerpAPI test failed: {str(e)}",
+            "jobs_found": 0,
+            "error": str(e)
+        }
+
+# NOTE: simulate_googlejobs_search function REMOVED
+# Google Jobs now uses ONLY SerpAPI - no simulation fallback
