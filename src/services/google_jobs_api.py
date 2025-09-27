@@ -1,6 +1,7 @@
 """
 Google Jobs API Service using SerpAPI
 Fetches real job data from Google Jobs search results
+Now integrated with user's SerpAPI configuration from database
 """
 
 import requests
@@ -9,65 +10,187 @@ import aiohttp
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 import json
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from .database import get_job_db
 
 
 class GoogleJobsAPIService:
-    """Service for fetching jobs from Google Jobs API via SerpAPI"""
+    """Service for fetching jobs from Google Jobs API via SerpAPI using user configuration"""
     
-    def __init__(self, api_key: str = "a448fc3f98bea2711a110c46c86d75cc09e786b729a8212f666c89d35800429f"):
-        self.api_key = api_key
+    def __init__(self, user_id: int = None):
         self.base_url = "https://serpapi.com/search.json"
         self.rate_limit_delay = 1  # 1 second between requests
+        self.user_id = user_id
+        self.config = None
+        
+    def _load_user_config(self) -> Dict[str, Any]:
+        """Load SerpAPI configuration from database for the user"""
+        if self.config:
+            return self.config
+            
+        try:
+            from ..database import get_job_db
+            db = get_job_db()
+            
+            # Get user's SerpAPI configuration
+            query = """
+            SELECT 
+                api_key, engine, location, google_domain, hl, gl,
+                max_jobs_per_sync, search_radius, ltype, date_posted,
+                job_type, no_cache, output
+            FROM serpapi_configurations 
+            WHERE user_id = :user_id AND is_active = TRUE
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+            
+            if self.user_id:
+                result = db.execute(text(query), {"user_id": self.user_id}).fetchone()
+                
+                if result:
+                    self.config = {
+                        "api_key": result.api_key,
+                        "engine": result.engine,
+                        "location": result.location,
+                        "google_domain": result.google_domain,
+                        "hl": result.hl,
+                        "gl": result.gl,
+                        "max_jobs_per_sync": result.max_jobs_per_sync,
+                        "search_radius": result.search_radius,
+                        "ltype": result.ltype,
+                        "date_posted": result.date_posted,
+                        "job_type": result.job_type,
+                        "no_cache": result.no_cache,
+                        "output": result.output
+                    }
+                    print(f"✅ Loaded SerpAPI config for user {self.user_id}")
+                    return self.config
+            
+            # Fallback to default configuration
+            self.config = {
+                "api_key": "a448fc3f98bea2711a110c46c86d75cc09e786b729a8212f666c89d35800429f",
+                "engine": "google_jobs",
+                "location": "India",
+                "google_domain": "google.com",
+                "hl": "en",
+                "gl": "in",
+                "max_jobs_per_sync": 50,
+                "search_radius": 50,
+                "ltype": 0,
+                "date_posted": "any",
+                "job_type": "any",
+                "no_cache": False,
+                "output": "json"
+            }
+            print("ℹ️ Using default SerpAPI configuration")
+            return self.config
+            
+        except Exception as e:
+            print(f"⚠️ Error loading SerpAPI config: {str(e)}")
+            # Return default config on error
+            self.config = {
+                "api_key": "a448fc3f98bea2711a110c46c86d75cc09e786b729a8212f666c89d35800429f",
+                "engine": "google_jobs",
+                "location": "India",
+                "google_domain": "google.com",
+                "hl": "en",
+                "gl": "in",
+                "max_jobs_per_sync": 50,
+                "search_radius": 50,
+                "ltype": 0,
+                "date_posted": "any",
+                "job_type": "any",
+                "no_cache": False,
+                "output": "json"
+            }
+            return self.config
         
     async def search_jobs(
         self, 
         keywords: str, 
-        location: str = "India",
-        limit: int = 30,
-        work_from_home: bool = False,
+        location: str = None,
+        limit: int = None,
+        work_from_home: bool = None,
         job_type: str = None,
         date_posted: str = None
     ) -> List[Dict[str, Any]]:
         """
-        Search for jobs using Google Jobs API
+        Search for jobs using Google Jobs API with user's SerpAPI configuration
         
         Args:
             keywords: Search keywords (e.g., "software engineer", "python developer")
-            location: Location to search in (default: "India")
-            limit: Maximum number of jobs to return (default: 30)
-            work_from_home: Filter for remote jobs (default: False)
-            job_type: Job type filter (full-time, part-time, contract)
-            date_posted: Date filter (yesterday, last week, last month)
+            location: Location to search in (overrides config default)
+            limit: Maximum number of jobs to return (overrides config default)
+            work_from_home: Filter for remote jobs (overrides config default)
+            job_type: Job type filter (overrides config default)
+            date_posted: Date filter (overrides config default)
             
         Returns:
             List of job dictionaries with standardized format
         """
         try:
-            # Prepare search parameters
+            # Load user configuration
+            config = self._load_user_config()
+            
+            # Prepare search parameters using config values or overrides
             params = {
-                "engine": "google_jobs",
-                "q": f"{keywords} {location}",
-                "location": location,
-                "hl": "en",
-                "gl": "in",  # India-specific results
-                "api_key": self.api_key
+                "engine": config["engine"],
+                "q": keywords,
+                "location": location or config["location"],
+                "google_domain": config["google_domain"],
+                "hl": config["hl"],
+                "gl": config["gl"],
+                "api_key": config["api_key"],
+                "output": config["output"]
             }
             
-            # Add optional filters
-            if work_from_home:
-                params["ltype"] = "1"  # Work from home filter
+            # Add location type filter (work from home)
+            ltype_value = config["ltype"]
+            if work_from_home is not None:
+                ltype_value = 1 if work_from_home else 0
+            if ltype_value == 1:
+                params["ltype"] = "1"
                 
-            if job_type:
-                params["q"] += f" {job_type}"
+            # Add no_cache parameter
+            if config["no_cache"]:
+                params["no_cache"] = "true"
                 
-            if date_posted:
-                if date_posted == "yesterday":
-                    params["uds"] = "ADvngMg3E3nZHBbR_ywpl3w6An90vX97JE-gu4BCrGwDJohluO_YEx5Dyq_CVMlfRWHofzvK0Wk891JW2_eoOlnHmlGhoQlGfxNX50Okp0sL0zMn3nwdzY_McxyGs0hImvmu_hEEFqi-4xASRa-l3trlS2XDqCTc4P2bJB8q1JFTtzHoIpfg98trHjtghpEcpH8ESmICX9xJL1_jOxNc-Jj3MQVqoKQQj7LoM84AVPDMESy36tT36cTj2iVbBT6f5RVyJrrp2LahzKGMydKp5doDK56yVOIvgqJjjE_z2R67VkMtqoybidk"
-                elif date_posted == "last_week":
-                    params["uds"] = "ADvngMg3E3nZHBbR_ywpl3w6An90vX97JE-gu4BCrGwDJohluGEiwNCBuePlScFgQPeZH8hoEIyVEdYwhzCz4-CgEiwMvBboHCRaWYLAOFnab9e8YOmH2R6krQFyehIFp0TQeo332IsFVWHPMQ5aaDzWEcMKVaMdiJnVrlWWVzQv6njJEsGo4_7V9ekRIJwqi2HPU8gpLUCnX_4j0K_Q7f7gPXlem6q3Z7jUzVx5v5PDYnFCc62WQziX1GuTN_550pnbDcFTC7QCsrJmxVjIuzglOim1DS6-gQVnyChXenTK141YjJYBjHA"
+            # Handle date posted filter
+            date_filter = date_posted or config["date_posted"]
+            if date_filter and date_filter != "any":
+                # Map common date filters to query modifications
+                if date_filter == "today":
+                    params["q"] += " posted today"
+                elif date_filter == "3days":
+                    params["q"] += " in the last 3 days"
+                elif date_filter == "week":
+                    params["q"] += " in the last week"
+                elif date_filter == "month":
+                    params["q"] += " in the last month"
             
-            print(f"🔍 Searching Google Jobs API: '{keywords}' in '{location}'")
-            print(f"📊 Parameters: {params}")
+            # Handle job type filter
+            job_type_filter = job_type or config["job_type"]
+            if job_type_filter and job_type_filter != "any":
+                # Map job types
+                job_type_mapping = {
+                    "full_time": "full time",
+                    "part_time": "part time",
+                    "contractor": "contract",
+                    "intern": "internship"
+                }
+                mapped_type = job_type_mapping.get(job_type_filter, job_type_filter)
+                params["q"] += f" {mapped_type}"
+            
+            # Set limit
+            effective_limit = limit or config["max_jobs_per_sync"]
+            
+            print(f"🔍 Searching Google Jobs API with user config:")
+            print(f"   Keywords: '{keywords}'")
+            print(f"   Location: '{params['location']}'")
+            print(f"   Work from home: {ltype_value == 1}")
+            print(f"   Max results: {effective_limit}")
+            print(f"   Date filter: {date_filter}")
             
             # Make API request
             async with aiohttp.ClientSession() as session:
@@ -88,14 +211,14 @@ class GoogleJobsAPIService:
                     jobs_results = data.get("jobs_results", [])
                     
                     if not jobs_results:
-                        print(f"⚠️ No jobs found for '{keywords}' in '{location}'")
+                        print(f"⚠️ No jobs found for '{keywords}' in '{params['location']}'")
                         return []
                     
                     print(f"✅ Found {len(jobs_results)} jobs from Google Jobs API")
                     
                     # Convert to standard format and limit results
                     standardized_jobs = []
-                    for job in jobs_results[:limit]:
+                    for job in jobs_results[:effective_limit]:
                         standardized_job = self._standardize_job_format(job)
                         if standardized_job:
                             standardized_jobs.append(standardized_job)
@@ -234,17 +357,23 @@ class GoogleJobsAPIService:
     
     def test_api_connection(self) -> bool:
         """
-        Test if the API key and connection are working
+        Test if the API key and connection are working using user configuration
         
         Returns:
             True if connection successful, False otherwise
         """
         try:
+            # Load user configuration
+            config = self._load_user_config()
+            
             params = {
-                "engine": "google_jobs",
+                "engine": config["engine"],
                 "q": "test job",
-                "location": "India",
-                "api_key": self.api_key
+                "location": config["location"],
+                "google_domain": config["google_domain"],
+                "hl": config["hl"],
+                "gl": config["gl"],
+                "api_key": config["api_key"]
             }
             
             response = requests.get(self.base_url, params=params, timeout=10)
@@ -252,17 +381,17 @@ class GoogleJobsAPIService:
             if response.status_code == 200:
                 data = response.json()
                 if "error" not in data:
-                    print("✅ Google Jobs API connection test successful")
+                    print("Google Jobs API connection test successful")
                     return True
                 else:
-                    print(f"❌ Google Jobs API error: {data['error']}")
+                    print(f"Google Jobs API error: {data['error']}")
                     return False
             else:
-                print(f"❌ Google Jobs API HTTP error: {response.status_code}")
+                print(f"Google Jobs API HTTP error: {response.status_code}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Google Jobs API connection test failed: {str(e)}")
+            print(f"Google Jobs API connection test failed: {str(e)}")
             return False
 
 

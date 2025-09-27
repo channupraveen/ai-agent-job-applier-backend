@@ -510,8 +510,8 @@ async def perform_job_sync(source_id: str, source_name: str, user_id: int, db: S
                 if preferred_location == "Remote":
                     preferred_location = "India"  # SerpAPI works better with specific locations
                 
-                # Initialize SerpAPI Google Jobs service
-                google_api = GoogleJobsAPIService()
+                # Initialize SerpAPI Google Jobs service with user_id
+                google_api = GoogleJobsAPIService(user_id=user_id)
                 
                 print("🧪 Testing SerpAPI connection...")
                 if not google_api.test_api_connection():
@@ -1511,6 +1511,7 @@ async def simulate_glassdoor_search(keywords: str, locations: list, experience: 
 class SerpAPIConfig(BaseModel):
     api_key: str
     engine: str = "google_jobs"
+    keywords: str = "react developer, angular developer, java developer"
     location: str = "India"
     google_domain: str = "google.com"
     hl: str = "en"
@@ -1532,7 +1533,7 @@ async def get_serpapi_config(
     try:
         query = """
         SELECT 
-            id, api_key, engine, location, google_domain, hl, gl,
+            id, api_key, engine, keywords, location, google_domain, hl, gl,
             max_jobs_per_sync, search_radius, ltype, date_posted,
             job_type, no_cache, output, is_active, last_test_at,
             last_test_status, last_test_jobs_found, last_test_message,
@@ -1551,6 +1552,7 @@ async def get_serpapi_config(
             default_config = {
                 "api_key": "a448fc3f98bea2711a110c46c86d75cc09e786b729a8212f666c89d35800429f",
                 "engine": "google_jobs",
+                "keywords": "react developer, angular developer, java developer",
                 "location": "India",
                 "google_domain": "google.com",
                 "hl": "en",
@@ -1574,6 +1576,7 @@ async def get_serpapi_config(
             "id": result.id,
             "api_key": result.api_key,
             "engine": result.engine,
+            "keywords": result.keywords,
             "location": result.location,
             "google_domain": result.google_domain,
             "hl": result.hl,
@@ -1632,6 +1635,7 @@ async def update_serpapi_config(
             SET 
                 api_key = :api_key,
                 engine = :engine,
+                keywords = :keywords,
                 location = :location,
                 google_domain = :google_domain,
                 hl = :hl,
@@ -1652,6 +1656,7 @@ async def update_serpapi_config(
                 "user_id": current_user.id,
                 "api_key": config.api_key,
                 "engine": config.engine,
+                "keywords": config.keywords,
                 "location": config.location,
                 "google_domain": config.google_domain,
                 "hl": config.hl,
@@ -1669,11 +1674,11 @@ async def update_serpapi_config(
             # Create new configuration
             insert_query = """
             INSERT INTO serpapi_configurations (
-                user_id, api_key, engine, location, google_domain, hl, gl,
+                user_id, api_key, engine, keywords, location, google_domain, hl, gl,
                 max_jobs_per_sync, search_radius, ltype, date_posted,
                 job_type, no_cache, output
             ) VALUES (
-                :user_id, :api_key, :engine, :location, :google_domain, :hl, :gl,
+                :user_id, :api_key, :engine, :keywords, :location, :google_domain, :hl, :gl,
                 :max_jobs_per_sync, :search_radius, :ltype, :date_posted,
                 :job_type, :no_cache, :output
             )
@@ -1684,6 +1689,7 @@ async def update_serpapi_config(
                 "user_id": current_user.id,
                 "api_key": config.api_key,
                 "engine": config.engine,
+                "keywords": config.keywords,
                 "location": config.location,
                 "google_domain": config.google_domain,
                 "hl": config.hl,
@@ -1707,6 +1713,7 @@ async def update_serpapi_config(
                 "id": updated_config.id,
                 "api_key": updated_config.api_key,
                 "engine": updated_config.engine,
+                "keywords": updated_config.keywords,
                 "location": updated_config.location,
                 "google_domain": updated_config.google_domain,
                 "hl": updated_config.hl,
@@ -1727,6 +1734,80 @@ async def update_serpapi_config(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error saving SerpAPI configuration: {str(e)}")
+
+@router.post("/integrations/job-sources/{source_id}/sync-with-config")
+async def sync_job_source_with_config(
+    source_id: str,
+    request_data: dict,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db)
+):
+    """Sync job source with specific SerpAPI configuration"""
+    try:
+        if source_id != 'googlejobs':
+            raise HTTPException(status_code=400, detail="Configuration sync only supported for Google Jobs")
+        
+        # Get the configuration from request
+        config = request_data.get('config', {})
+        
+        print(f"🔧 Syncing Google Jobs with custom config: {config}")
+        
+        # Validate required fields
+        if not config.get('api_key'):
+            raise HTTPException(status_code=400, detail="API key is required in configuration")
+        
+        # Check if user has job search criteria
+        criteria_query = """
+        SELECT keywords FROM job_search_criteria 
+        WHERE user_profile_id = :user_id AND is_active = true
+        """
+        
+        criteria_result = db.execute(text(criteria_query), {"user_id": current_user.id}).fetchone()
+        
+        if not criteria_result:
+            return {
+                "success": False,
+                "message": "Please set your job search criteria in Job Preferences before syncing"
+            }
+        
+        search_keywords = criteria_result[0]
+        if not search_keywords or search_keywords.strip() == "":
+            return {
+                "success": False,
+                "message": "Please add keywords to your job search criteria before syncing"
+            }
+        
+        # Start background sync with custom configuration
+        background_tasks.add_task(
+            perform_job_sync_with_config, 
+            source_id, 
+            "Google Jobs API", 
+            current_user.id, 
+            db, 
+            config
+        )
+        
+        return {
+            "success": True,
+            "message": f"Sync started for Google Jobs with custom configuration",
+            "source_id": source_id,
+            "search_keywords": search_keywords,
+            "config_used": {
+                "location": config.get('location', 'India'),
+                "max_jobs_per_sync": config.get('max_jobs_per_sync', 50),
+                "work_type": "Remote Only" if config.get('ltype') == 1 else "All Jobs",
+                "date_posted": config.get('date_posted', 'any'),
+                "job_type": config.get('job_type', 'any')
+            },
+            "estimated_duration": "2-5 minutes",
+            "status": "processing"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error starting sync with config: {str(e)}")
 
 @router.post("/integrations/serpapi-config/test")
 async def test_serpapi_config(
@@ -1773,7 +1854,7 @@ async def test_serpapi_config(
         # Test the API connection
         from .services.google_jobs_api import GoogleJobsAPIService
         
-        google_api = GoogleJobsAPIService()
+        google_api = GoogleJobsAPIService(user_id=current_user.id)
         
         # Test with simple search
         test_start = datetime.utcnow()
@@ -1862,6 +1943,215 @@ async def test_serpapi_config(
             "jobs_found": 0,
             "error": str(e)
         }
+
+async def perform_job_sync_with_config(source_id: str, source_name: str, user_id: int, db: Session, config: dict):
+    """Background task to perform job sync with custom SerpAPI configuration"""
+    try:
+        print(f"🚀 Starting Google Jobs sync with custom config for user {user_id}")
+        print(f"📋 Config details: {config}")
+        
+        # Get user's job search criteria
+        criteria_query = """
+        SELECT keywords, locations, experience_levels
+        FROM job_search_criteria 
+        WHERE user_profile_id = :user_id AND is_active = true
+        """
+        
+        criteria_result = db.execute(text(criteria_query), {"user_id": user_id}).fetchone()
+        
+        if not criteria_result:
+            print(f"❌ No job search criteria found for user {user_id}")
+            return
+        
+        # Use keywords from custom configuration instead of user criteria
+        search_keywords = config.get('keywords', 'software developer')
+        
+        # Use location from custom configuration instead of user criteria
+        preferred_location = config.get('location', 'India')
+        
+        # Parse JSON fields for locations from user criteria (for logging only)
+        criteria_dict = dict(criteria_result._mapping)
+        locations_json = criteria_dict.get('locations')
+        search_locations = json.loads(locations_json) if locations_json else ["Remote"]
+        
+        print(f"✅ Using keywords from SerpAPI config: '{search_keywords}'")
+        print(f"✅ Using location from SerpAPI config: '{preferred_location}'")
+        print(f"📍 User criteria locations (ignored): {search_locations}")
+        
+        # Create a temporary GoogleJobsAPIService with custom config
+        from .services.google_jobs_api_with_config import GoogleJobsAPIServiceWithConfig
+        
+        # Location is now directly from config, no fallback needed
+        print(f"🎯 Final location for search: '{preferred_location}'")
+        
+        # Initialize service with custom configuration
+        google_api = GoogleJobsAPIServiceWithConfig(custom_config=config)
+        
+        print("🧪 Testing custom SerpAPI configuration...")
+        if not google_api.test_api_connection():
+            print("❌ Custom SerpAPI configuration test failed")
+            return
+        
+        print("✅ Custom configuration validated, fetching jobs...")
+        
+        # Keywords are already set above from config, don't overwrite them
+        print(f"🔧 Final keywords being sent to API: '{search_keywords}'")
+        print(f"📍 Location: {preferred_location}")
+        print(f"🔢 Max jobs: {config.get('max_jobs_per_sync', 50)}")
+        print(f"🏠 Work type: {'Remote Only' if config.get('ltype') == 1 else 'All Jobs'}")
+        
+        # Search for jobs using keywords from SerpAPI config
+        jobs = await google_api.search_jobs(
+            keywords=search_keywords,  # This comes from config.get('keywords')
+            location=preferred_location,
+            limit=config.get('max_jobs_per_sync', 50),
+            work_from_home=config.get('ltype') == 1
+        )
+        
+        print(f"📊 Custom SerpAPI returned {len(jobs)} jobs")
+        
+        # Save jobs to database
+        new_jobs_count = 0
+        for job in jobs:
+            try:
+                existing_query = "SELECT id FROM job_applications WHERE url = :url"
+                existing = db.execute(text(existing_query), {"url": job.get("url", "")}).fetchone()
+                
+                if not existing and job.get("url"):
+                    insert_query = """
+                    INSERT INTO job_applications (
+                        title, company, location, url, description, requirements,
+                        salary_range, status, match_score, ai_decision, ai_reasoning,
+                        created_at, updated_at
+                    ) VALUES (
+                        :title, :company, :location, :url, :description, :requirements,
+                        :salary_range, 'found', :match_score, :ai_decision, :ai_reasoning,
+                        :created_at, :updated_at
+                    )
+                    """
+                    
+                    params = {
+                        "title": job.get("title", ""),
+                        "company": job.get("company", ""),
+                        "location": job.get("location", ""),
+                        "url": job.get("url", ""),
+                        "description": job.get("description", ""),
+                        "requirements": job.get("requirements", ""),
+                        "salary_range": job.get("salary", ""),
+                        "match_score": 90,  # Higher score for custom config results
+                        "ai_decision": "apply",
+                        "ai_reasoning": f"Custom SerpAPI sync - Keywords: '{config.get('keywords')}', Location: '{preferred_location}' (from config), Max: {config.get('max_jobs_per_sync')}, WorkType: {'Remote' if config.get('ltype')==1 else 'All'}, Source: {job.get('source', 'Google Jobs API')}",
+                        "created_at": datetime.utcnow(),
+                        "updated_at": datetime.utcnow()
+                    }
+                    
+                    db.execute(text(insert_query), params)
+                    new_jobs_count += 1
+            except Exception as job_error:
+                print(f"Error saving job: {str(job_error)}")
+                continue
+        
+        db.commit()
+        
+        # Update sync time and job count in database
+        try:
+            # First, count total jobs for this source
+            count_jobs_query = """
+            SELECT COUNT(*) as total_jobs 
+            FROM job_applications 
+            WHERE ai_reasoning LIKE :source_pattern
+            """
+            
+            source_pattern = f"%Google Jobs%"
+            job_count_result = db.execute(text(count_jobs_query), {"source_pattern": source_pattern}).fetchone()
+            total_jobs_for_source = job_count_result[0] if job_count_result else 0
+            
+            print(f"📊 Total jobs for Google Jobs source: {total_jobs_for_source}")
+            
+            # Update job_sources table with new counts and sync time
+            update_sync_query = """
+            UPDATE job_sources 
+            SET last_sync = :sync_time, 
+                total_jobs = :total_jobs,
+                updated_at = :sync_time 
+            WHERE id = :source_id
+            """
+            db.execute(text(update_sync_query), {
+                "sync_time": datetime.utcnow(),
+                "total_jobs": total_jobs_for_source,
+                "source_id": source_id
+            })
+            db.commit()
+            
+            print(f"✅ Updated job_sources: {source_id} now shows {total_jobs_for_source} total jobs")
+            
+        except Exception as update_error:
+            print(f"Error updating sync time and job count: {str(update_error)}")
+        
+        print(f"✅ Custom config sync complete: {len(jobs)} jobs found, {new_jobs_count} new jobs added")
+        print(f"🎯 SerpAPI Configuration used successfully:")
+        print(f"   • Keywords: {config.get('keywords', 'Not set')}")
+        print(f"   • Location: {preferred_location} (from config, not user criteria)")
+        print(f"   • Max jobs: {config.get('max_jobs_per_sync', 50)}")
+        print(f"   • Work from home: {config.get('ltype') == 1}")
+        print(f"   • Date filter: {config.get('date_posted', 'any')}")
+        print(f"   • Job type: {config.get('job_type', 'any')}")
+        print(f"   • Search radius: {config.get('search_radius', 50)} km")
+        
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error syncing with custom config: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+@router.get("/integrations/job-sources/{source_id}/jobs-count")
+async def get_job_source_count(
+    source_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db)
+):
+    """Get current job count for a specific source"""
+    try:
+        # Count jobs for this specific source
+        if source_id == "googlejobs":
+            source_pattern = "%Google Jobs%"
+        elif source_id == "naukri":
+            source_pattern = "%Naukri.com%"
+        elif source_id == "indeed":
+            source_pattern = "%Indeed India%"
+        else:
+            # Generic pattern for other sources
+            source_query = "SELECT name FROM job_sources WHERE id = :source_id"
+            source_result = db.execute(text(source_query), {"source_id": source_id}).fetchone()
+            if source_result:
+                source_pattern = f"%{source_result[0]}%"
+            else:
+                source_pattern = f"%{source_id}%"
+        
+        count_query = """
+        SELECT COUNT(*) as total_jobs 
+        FROM job_applications 
+        WHERE ai_reasoning LIKE :source_pattern
+        """
+        
+        result = db.execute(text(count_query), {"source_pattern": source_pattern}).fetchone()
+        job_count = result[0] if result else 0
+        
+        # Also get the last sync time
+        sync_query = "SELECT last_sync FROM job_sources WHERE id = :source_id"
+        sync_result = db.execute(text(sync_query), {"source_id": source_id}).fetchone()
+        last_sync = sync_result[0] if sync_result else None
+        
+        return {
+            "success": True,
+            "source_id": source_id,
+            "total_jobs": job_count,
+            "last_sync": last_sync.isoformat() if last_sync else None,
+            "pattern_used": source_pattern
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting job count: {str(e)}")
 
 # NOTE: simulate_googlejobs_search function REMOVED
 # Google Jobs now uses ONLY SerpAPI - no simulation fallback
