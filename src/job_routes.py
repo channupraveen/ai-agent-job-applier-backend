@@ -18,6 +18,53 @@ from .auth import get_current_user
 router = APIRouter(tags=["Job Search & Discovery"])
 
 
+def extract_requirements_from_description(description: str, existing_requirements: str) -> str:
+    """Extract job requirements from description when structured requirements are empty"""
+    if existing_requirements and existing_requirements.strip():
+        return existing_requirements
+    
+    if not description:
+        return "Requirements not specified"
+    
+    # Look for requirement patterns in the description
+    requirement_patterns = [
+        r'(?i)(?:requirements?|qualifications?|skills?)[:\s]*([^.]*(?:\.[^.]*){0,3})',
+        r'(?i)(?:must have|should have|required)[:\s]*([^.]*(?:\.[^.]*){0,2})',
+        r'(?i)(?:experience with|knowledge of|proficiency in)[:\s]*([^.]*(?:\.[^.]*){0,2})',
+        r'(?i)(?:minimum|preferred)[:\s]+(?:qualifications?|requirements?)[:\s]*([^.]*(?:\.[^.]*){0,2})'
+    ]
+    
+    extracted_requirements = []
+    
+    for pattern in requirement_patterns:
+        matches = re.findall(pattern, description)
+        for match in matches:
+            if match and len(match.strip()) > 10:  # Only meaningful requirements
+                cleaned = match.strip().replace('\n', ' ').replace('  ', ' ')
+                if cleaned not in extracted_requirements:
+                    extracted_requirements.append(cleaned)
+    
+    if extracted_requirements:
+        return ' | '.join(extracted_requirements[:3])  # Limit to first 3 matches
+    
+    # Fallback: Look for common tech skills
+    tech_skills = [
+        'Python', 'JavaScript', 'React', 'Angular', 'Java', 'Node.js', 'SQL',
+        'Docker', 'AWS', 'Azure', 'Git', 'TypeScript', 'HTML', 'CSS', 'MongoDB'
+    ]
+    
+    found_skills = []
+    desc_lower = description.lower()
+    for skill in tech_skills:
+        if skill.lower() in desc_lower:
+            found_skills.append(skill)
+    
+    if found_skills:
+        return f"Skills: {', '.join(found_skills[:5])}"
+    
+    return "See job description for requirements"
+
+
 def calculate_match_score(
     job_description: str, job_requirements: str, user_skills: List[str]
 ) -> int:
@@ -464,6 +511,13 @@ async def search_jobs(
         jobs = []
         for row in jobs_data:
             job_dict = dict(row._mapping)
+            
+            # Improve requirements field
+            job_dict['requirements'] = extract_requirements_from_description(
+                job_dict.get('description', ''), 
+                job_dict.get('requirements', '')
+            )
+            
             # Format datetime fields
             for date_field in [
                 "applied_at",
@@ -646,6 +700,12 @@ async def bulk_import_jobs(
 
                 # Get AI decision
                 ai_decision, ai_reasoning = get_ai_decision(match_score, {})
+                
+                # Extract enhanced requirements
+                enhanced_requirements = extract_requirements_from_description(
+                    job_data.get("description", ""),
+                    job_data.get("requirements", "")
+                )
 
                 # Insert job
                 insert_query = """
@@ -666,7 +726,7 @@ async def bulk_import_jobs(
                     "location": job_data.get("location", ""),
                     "url": job_data.get("url"),
                     "description": job_data.get("description", ""),
-                    "requirements": job_data.get("requirements", ""),
+                    "requirements": enhanced_requirements,  # Use enhanced requirements
                     "salary_range": job_data.get("salary_range", ""),
                     "match_score": match_score,
                     "ai_decision": ai_decision,

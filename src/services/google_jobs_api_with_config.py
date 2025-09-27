@@ -6,9 +6,9 @@ Enhanced version that accepts configuration parameters directly
 import requests
 import asyncio
 import aiohttp
+import json
 from typing import List, Dict, Optional, Any
 from datetime import datetime
-import json
 
 
 class GoogleJobsAPIServiceWithConfig:
@@ -142,6 +142,13 @@ class GoogleJobsAPIServiceWithConfig:
                         
                         data = await response.json()
                         
+                        # LOG THE COMPLETE SERPAPI RESPONSE
+                        print(f"\n" + "="*80)
+                        print(f"📋 COMPLETE SERPAPI RESPONSE (Page {page_num}):")
+                        print(f"="*80)
+                        print(json.dumps(data, indent=2, default=str))
+                        print(f"="*80 + "\n")
+                        
                         # Check for API errors
                         if "error" in data:
                             print(f"❌ Google Jobs API error: {data['error']}")
@@ -149,6 +156,19 @@ class GoogleJobsAPIServiceWithConfig:
                         
                         # Extract jobs from results
                         jobs_results = data.get("jobs_results", [])
+                        
+                        # LOG KEY RESPONSE FIELDS SUMMARY
+                        print(f"📊 SERPAPI RESPONSE SUMMARY:")
+                        print(f"   • Jobs found: {len(jobs_results)}")
+                        print(f"   • Search info: {data.get('search_information', {})}")
+                        print(f"   • Search params: {data.get('search_parameters', {})}")
+                        print(f"   • Pagination: {data.get('serpapi_pagination', {})}")
+                        
+                        if jobs_results:
+                            print(f"   • Sample job titles:")
+                            for i, job in enumerate(jobs_results[:3]):
+                                print(f"     {i+1}. {job.get('title', 'No title')} - {job.get('company_name', 'No company')}")
+                        print()
                         
                         if not jobs_results:
                             print(f"⚠️ No more jobs found for query: '{params['q']}' in '{params['location']}'")
@@ -233,6 +253,15 @@ class GoogleJobsAPIServiceWithConfig:
                 if highlight.get("title") == "Qualifications":
                     requirements = " | ".join(highlight.get("items", []))
                     break
+            
+            # If no structured requirements found, extract from description
+            if not requirements or requirements.strip() == "":
+                # Import the requirements extraction function
+                from ..job_routes import extract_requirements_from_description
+                requirements = extract_requirements_from_description(
+                    description, 
+                    requirements
+                )
             
             # Extract salary information
             salary = ""

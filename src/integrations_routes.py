@@ -2153,5 +2153,92 @@ async def get_job_source_count(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting job count: {str(e)}")
 
+@router.post("/integrations/debug-serpapi-response")
+async def debug_serpapi_response(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db)
+):
+    """Debug endpoint to see raw SerpAPI response"""
+    try:
+        # Get user's SerpAPI config
+        config_query = """
+        SELECT api_key, engine, keywords, location, google_domain, hl, gl, max_jobs_per_sync
+        FROM serpapi_configurations 
+        WHERE user_id = :user_id AND is_active = TRUE
+        ORDER BY created_at DESC LIMIT 1
+        """
+        
+        config_result = db.execute(text(config_query), {"user_id": current_user.id}).fetchone()
+        
+        if not config_result:
+            return {
+                "success": False,
+                "message": "No SerpAPI configuration found. Please save your configuration first."
+            }
+        
+        config = dict(config_result._mapping)
+        
+        # Make a single SerpAPI call with debug output
+        import aiohttp
+        import json
+        
+        params = {
+            "engine": config.get("engine", "google_jobs"),
+            "q": config.get("keywords", "software developer"),
+            "location": config.get("location", "India"),
+            "google_domain": config.get("google_domain", "google.com"),
+            "hl": config.get("hl", "en"),
+            "gl": config.get("gl", "in"),
+            "api_key": config.get("api_key"),
+            "output": "json"
+        }
+        
+        print(f"🔍 Debug SerpAPI call with params: {params}")
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://serpapi.com/search.json", params=params) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    return {
+                        "success": False,
+                        "message": f"SerpAPI HTTP error {response.status}: {error_text}"
+                    }
+                
+                data = await response.json()
+                
+                # Log the complete response
+                print(f"\n" + "="*100)
+                print(f"🔍 DEBUG: COMPLETE SERPAPI RESPONSE")
+                print(f"="*100)
+                print(json.dumps(data, indent=2, default=str))
+                print(f"="*100 + "\n")
+                
+                return {
+                    "success": True,
+                    "message": "SerpAPI response logged to console. Check backend logs.",
+                    "response_summary": {
+                        "search_information": data.get("search_information", {}),
+                        "search_parameters": data.get("search_parameters", {}),
+                        "jobs_found": len(data.get("jobs_results", [])),
+                        "pagination": data.get("serpapi_pagination", {}),
+                        "sample_jobs": [
+                            {
+                                "title": job.get("title"),
+                                "company": job.get("company_name"),
+                                "location": job.get("location"),
+                                "via": job.get("via")
+                            }
+                            for job in data.get("jobs_results", [])[:3]
+                        ]
+                    },
+                    "full_response_keys": list(data.keys())
+                }
+                
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error debugging SerpAPI: {str(e)}"
+        }
+
 # NOTE: simulate_googlejobs_search function REMOVED
 # Google Jobs now uses ONLY SerpAPI - no simulation fallback
