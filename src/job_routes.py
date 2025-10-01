@@ -782,7 +782,8 @@ async def get_job_recommendations(
             ja.id, ja.title, ja.company, ja.location, ja.url,
             ja.description, ja.requirements, ja.salary_range,
             ja.match_score, ja.ai_decision, ja.ai_reasoning,
-            ja.status, ja.applied_at, ja.created_at
+            ja.status, ja.applied_at, ja.created_at, ja.is_saved,
+            ja.job_type, ja.experience_level, ja.company_logo
         FROM job_applications ja
         WHERE ja.match_score >= :match_threshold
         """
@@ -854,6 +855,210 @@ async def get_job_recommendations(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating recommendations: {str(e)}",
+        )
+
+
+@router.get("/recommendations/detailed")
+async def get_detailed_recommendations(
+    limit: int = Query(20, ge=1, le=100),
+    match_threshold: int = Query(60, ge=0, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db),
+):
+    """Get detailed job recommendations with match reasons and skill analysis"""
+    try:
+        # Get user skills from profile
+        user_query = "SELECT skills FROM user_profiles WHERE id = :user_id"
+        user_result = db.execute(text(user_query), {"user_id": current_user.id})
+        user_row = user_result.fetchone()
+        
+        user_skills = []
+        if user_row and user_row[0]:
+            try:
+                import json
+                user_skills = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
+            except:
+                user_skills = []
+        
+        # Get recommendations
+        jobs_query = """
+        SELECT 
+            id, title, company, location, url, description, requirements,
+            salary_range, match_score, ai_decision, ai_reasoning,
+            status, created_at, is_saved, job_type, experience_level, company_logo
+        FROM job_applications
+        WHERE match_score >= :match_threshold
+        AND applied_at IS NULL
+        ORDER BY match_score DESC, created_at DESC
+        LIMIT :limit
+        """
+        
+        result = db.execute(text(jobs_query), {
+            "match_threshold": match_threshold,
+            "limit": limit
+        })
+        jobs_data = result.fetchall()
+        
+        detailed_recommendations = []
+        for row in jobs_data:
+            job = dict(row._mapping)
+            
+            # Analyze skills match
+            job_requirements = (job.get("requirements") or "").lower()
+            skills_matched = []
+            skills_missing = []
+            
+            # Common tech skills to check
+            all_skills = set(user_skills + [
+                "Python", "JavaScript", "React", "Node.js", "Java", "C++",
+                "SQL", "AWS", "Docker", "Kubernetes", "Git", "TypeScript",
+                "Angular", "Vue", "MongoDB", "PostgreSQL", "Redis",
+                "GraphQL", "REST API", "Microservices"
+            ])
+            
+            for skill in all_skills:
+                if skill.lower() in job_requirements:
+                    if skill in user_skills:
+                        skills_matched.append(skill)
+                    else:
+                        skills_missing.append(skill)
+            
+            # Generate match reasons
+            match_reasons = []
+            match_score = job.get("match_score", 0)
+            
+            if match_score >= 90:
+                match_reasons.append("Exceptional match - Top 10% of all opportunities")
+            elif match_score >= 80:
+                match_reasons.append("Excellent alignment with your profile")
+            elif match_score >= 70:
+                match_reasons.append("Strong match with your skills and experience")
+            
+            if len(skills_matched) >= 5:
+                match_reasons.append(f"{len(skills_matched)} of your skills match job requirements")
+            elif len(skills_matched) >= 3:
+                match_reasons.append(f"{len(skills_matched)} key skills aligned")
+            
+            if job.get("location") and "remote" in job.get("location", "").lower():
+                match_reasons.append("Remote work opportunity")
+            
+            if job.get("salary_range"):
+                match_reasons.append("Salary range specified")
+            
+            # Format response
+            detailed_job = {
+                "id": job["id"],
+                "title": job["title"],
+                "company": job["company"],
+                "location": job.get("location"),
+                "url": job.get("url"),
+                "description": job.get("description"),
+                "requirements": job.get("requirements"),
+                "salary_range": job.get("salary_range"),
+                "match_score": match_score,
+                "ai_reasoning": job.get("ai_reasoning"),
+                "posted_date": job["created_at"].isoformat() if job.get("created_at") else None,
+                "company_logo": job.get("company_logo"),
+                "job_type": job.get("job_type"),
+                "experience_level": job.get("experience_level"),
+                "skills_matched": skills_matched[:10],  # Limit to top 10
+                "skills_missing": skills_missing[:5],   # Limit to top 5
+                "match_reasons": match_reasons,
+                "is_saved": job.get("is_saved", False),
+                "is_applied": job.get("status") == "applied"
+            }
+            
+            detailed_recommendations.append(detailed_job)
+        
+        return {
+            "success": True,
+            "recommendations": detailed_recommendations,
+            "total_recommendations": len(detailed_recommendations),
+            "message": f"Found {len(detailed_recommendations)} detailed recommendations"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating detailed recommendations: {str(e)}"
+        )
+
+
+@router.get("/recommendations/stats")
+async def get_recommendation_stats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db),
+):
+    """Get recommendation statistics and insights"""
+    try:
+        # Get user skills
+        user_query = "SELECT skills FROM user_profiles WHERE id = :user_id"
+        user_result = db.execute(text(user_query), {"user_id": current_user.id})
+        user_row = user_result.fetchone()
+        
+        user_skills = []
+        if user_row and user_row[0]:
+            try:
+                import json
+                user_skills = json.loads(user_row[0]) if isinstance(user_row[0], str) else user_row[0]
+            except:
+                user_skills = []
+        
+        # Get recommendation stats
+        stats_query = """
+        SELECT 
+            COUNT(*) as total_recommendations,
+            COUNT(CASE WHEN match_score >= 85 THEN 1 END) as excellent_matches,
+            COUNT(CASE WHEN match_score >= 70 AND match_score < 85 THEN 1 END) as good_matches,
+            AVG(match_score) as average_match_score,
+            COUNT(CASE WHEN applied_at IS NULL THEN 1 END) as unapplied_count
+        FROM job_applications
+        WHERE match_score >= 60
+        """
+        
+        result = db.execute(text(stats_query))
+        stats = dict(result.fetchone()._mapping)
+        
+        # Get top skill matches from job requirements
+        skills_query = """
+        SELECT requirements
+        FROM job_applications
+        WHERE match_score >= 70
+        AND requirements IS NOT NULL
+        LIMIT 50
+        """
+        
+        skills_result = db.execute(text(skills_query))
+        all_requirements = [row[0] for row in skills_result.fetchall() if row[0]]
+        
+        # Count skill occurrences
+        skill_counts = {}
+        for skill in user_skills:
+            count = sum(1 for req in all_requirements if skill.lower() in req.lower())
+            if count > 0:
+                skill_counts[skill] = count
+        
+        # Get top 5 most demanded skills from user's skillset
+        top_skill_matches = sorted(skill_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        top_skills = [skill for skill, count in top_skill_matches]
+        
+        return {
+            "success": True,
+            "stats": {
+                "total_recommendations": stats.get("total_recommendations", 0),
+                "excellent_matches": stats.get("excellent_matches", 0),
+                "good_matches": stats.get("good_matches", 0),
+                "average_match_score": round(stats.get("average_match_score", 0) or 0, 1),
+                "unapplied_count": stats.get("unapplied_count", 0),
+                "top_skill_matches": top_skills
+            },
+            "message": "Recommendation statistics retrieved successfully"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving recommendation stats: {str(e)}"
         )
 
 
@@ -930,4 +1135,290 @@ async def analyze_job_market(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error analyzing job market: {str(e)}",
+        )
+
+
+# ===================================
+# NEW APIS FOR JOB LIST COMPONENT
+# ===================================
+
+@router.get("/jobs/stats")
+async def get_job_statistics(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db),
+):
+    """Get job statistics for dashboard cards"""
+    try:
+        stats_query = """
+        SELECT 
+            COUNT(*) as total_jobs,
+            COUNT(CASE WHEN status = 'found' THEN 1 END) as found_jobs,
+            COUNT(CASE WHEN status = 'applied' THEN 1 END) as applied_jobs,
+            COUNT(CASE WHEN status = 'interview' THEN 1 END) as interview_jobs,
+            COUNT(CASE WHEN status = 'offer' THEN 1 END) as offer_jobs,
+            COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_jobs,
+            COUNT(CASE WHEN is_saved = true THEN 1 END) as saved_jobs,
+            AVG(match_score) as avg_match_score
+        FROM job_applications
+        """
+        
+        result = db.execute(text(stats_query))
+        stats = dict(result.fetchone()._mapping)
+        
+        return {
+            "success": True,
+            "stats": {
+                "total_jobs": stats.get("total_jobs", 0),
+                "found_jobs": stats.get("found_jobs", 0),
+                "applied_jobs": stats.get("applied_jobs", 0),
+                "interview_jobs": stats.get("interview_jobs", 0),
+                "offer_jobs": stats.get("offer_jobs", 0),
+                "rejected_jobs": stats.get("rejected_jobs", 0),
+                "saved_jobs": stats.get("saved_jobs", 0),
+                "avg_match_score": round(stats.get("avg_match_score", 0) or 0, 1)
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving job statistics: {str(e)}"
+        )
+
+
+@router.post("/jobs/{job_id}/save")
+async def toggle_save_job(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db),
+):
+    """Toggle save/bookmark status of a job"""
+    try:
+        # Check if job exists and get current save status
+        check_query = "SELECT id, title, company, is_saved FROM job_applications WHERE id = :job_id"
+        existing = db.execute(text(check_query), {"job_id": job_id}).fetchone()
+        
+        if not existing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Job not found"
+            )
+        
+        job_info = dict(existing._mapping)
+        current_save_status = job_info.get("is_saved", False)
+        new_save_status = not current_save_status
+        
+        # Update save status
+        update_query = """
+        UPDATE job_applications 
+        SET is_saved = :is_saved, updated_at = :updated_at
+        WHERE id = :job_id
+        RETURNING id, title, company, is_saved
+        """
+        
+        params = {
+            "job_id": job_id,
+            "is_saved": new_save_status,
+            "updated_at": datetime.utcnow()
+        }
+        
+        result = db.execute(text(update_query), params)
+        updated_job = result.fetchone()
+        db.commit()
+        
+        job_dict = dict(updated_job._mapping)
+        
+        return {
+            "success": True,
+            "message": f"Job {'saved' if new_save_status else 'unsaved'} successfully",
+            "job": job_dict,
+            "is_saved": new_save_status
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error toggling save status: {str(e)}"
+        )
+
+
+@router.get("/jobs")
+async def list_all_jobs(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    is_saved: Optional[bool] = Query(None),
+    min_match_score: Optional[int] = Query(None, ge=0, le=100),
+    sort_by: str = Query("created_at", regex="^(created_at|match_score|title|company)$"),
+    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db),
+):
+    """List all jobs with optional filters and pagination"""
+    try:
+        # Build query
+        base_query = """
+        SELECT 
+            id, title, company, location, url, description, requirements,
+            salary_range, status, applied_at, response_received, response_date,
+            match_score, ai_decision, ai_reasoning, is_saved, created_at, updated_at
+        FROM job_applications
+        WHERE 1=1
+        """
+        
+        params = {}
+        conditions = []
+        
+        # Apply filters
+        if status:
+            conditions.append("status = :status")
+            params["status"] = status
+        
+        if is_saved is not None:
+            conditions.append("is_saved = :is_saved")
+            params["is_saved"] = is_saved
+        
+        if min_match_score is not None:
+            conditions.append("match_score >= :min_match_score")
+            params["min_match_score"] = min_match_score
+        
+        # Add conditions to query
+        if conditions:
+            base_query += " AND " + " AND ".join(conditions)
+        
+        # Get total count
+        count_query = f"SELECT COUNT(*) FROM ({base_query}) as count_subquery"
+        count_result = db.execute(text(count_query), params).fetchone()
+        total = count_result[0] if count_result else 0
+        
+        # Add sorting and pagination
+        final_query = f"""
+        {base_query}
+        ORDER BY {sort_by} {sort_order}
+        LIMIT :limit OFFSET :skip
+        """
+        
+        params.update({"limit": limit, "skip": skip})
+        
+        # Execute query
+        result = db.execute(text(final_query), params)
+        jobs_data = result.fetchall()
+        
+        # Convert to job objects
+        jobs = []
+        for row in jobs_data:
+            job_dict = dict(row._mapping)
+            
+            # Format datetime fields
+            for date_field in ["applied_at", "response_date", "created_at", "updated_at"]:
+                if job_dict.get(date_field):
+                    job_dict[date_field] = job_dict[date_field].isoformat()
+            
+            jobs.append(job_dict)
+        
+        return {
+            "success": True,
+            "jobs": jobs,
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+            "total_pages": (total + limit - 1) // limit,
+            "message": f"Retrieved {len(jobs)} jobs"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error listing jobs: {str(e)}"
+        )
+
+
+@router.post("/jobs/{job_id}/apply")
+async def quick_apply_to_job(
+    job_id: int,
+    apply_data: Dict[str, Any] = {},
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db),
+):
+    """Quick apply to a job - updates status to 'applied'"""
+    try:
+        # Check if job exists
+        check_query = "SELECT id, title, company, status FROM job_applications WHERE id = :job_id"
+        existing = db.execute(text(check_query), {"job_id": job_id}).fetchone()
+        
+        if not existing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Job not found"
+            )
+        
+        job_info = dict(existing._mapping)
+        
+        # Check if already applied
+        if job_info.get("status") == "applied":
+            return {
+                "success": True,
+                "message": f"Already applied to {job_info['title']} at {job_info['company']}",
+                "already_applied": True
+            }
+        
+        # Update to applied status
+        update_query = """
+        UPDATE job_applications 
+        SET status = 'applied', applied_at = :applied_at, updated_at = :updated_at
+        WHERE id = :job_id
+        RETURNING id, title, company, status, applied_at
+        """
+        
+        params = {
+            "job_id": job_id,
+            "applied_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        result = db.execute(text(update_query), params)
+        updated_job = result.fetchone()
+        db.commit()
+        
+        # Add application note if provided
+        note = apply_data.get("note")
+        if note:
+            note_query = """
+            INSERT INTO application_notes (job_application_id, note, created_at, updated_at)
+            VALUES (:job_id, :note, :created_at, :updated_at)
+            """
+            
+            note_params = {
+                "job_id": job_id,
+                "note": note,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+            
+            db.execute(text(note_query), note_params)
+            db.commit()
+        
+        job_dict = dict(updated_job._mapping)
+        if job_dict.get("applied_at"):
+            job_dict["applied_at"] = job_dict["applied_at"].isoformat()
+        
+        return {
+            "success": True,
+            "message": f"Successfully applied to {job_dict['title']} at {job_dict['company']}",
+            "job": job_dict,
+            "already_applied": False
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error applying to job: {str(e)}"
         )

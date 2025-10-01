@@ -14,6 +14,7 @@ import asyncio
 
 from .auth import get_current_user
 from .models import get_job_db, UserProfile as User
+from .utils.source_extractor import extract_source_from_url
 
 router = APIRouter(tags=["External Job Site Integration"])
 
@@ -147,15 +148,18 @@ async def search_indeed_jobs(
                 ).fetchone()
 
                 if not existing and job.get("url"):
+                    # Extract source from URL
+                    job_source = extract_source_from_url(job.get("url", ""))
+                    
                     insert_query = """
                     INSERT INTO job_applications (
                         title, company, location, url, description, requirements,
                         salary_range, status, match_score, ai_decision, ai_reasoning,
-                        created_at, updated_at
+                        source, created_at, updated_at
                     ) VALUES (
                         :title, :company, :location, :url, :description, :requirements,
                         :salary_range, 'found', :match_score, :ai_decision, :ai_reasoning,
-                        :created_at, :updated_at
+                        :source, :created_at, :updated_at
                     ) RETURNING id
                     """
 
@@ -170,6 +174,7 @@ async def search_indeed_jobs(
                         "match_score": match_score,
                         "ai_decision": get_recommendation_from_score(match_score),
                         "ai_reasoning": f"REAL Indeed RSS job: {match_score}% compatibility",
+                        "source": job_source,
                         "created_at": datetime.utcnow(),
                         "updated_at": datetime.utcnow(),
                     }
@@ -454,15 +459,18 @@ async def search_all_indian_jobs(
                 ).fetchone()
 
                 if not existing and job.get("url"):
+                    # Extract source from URL
+                    job_source = extract_source_from_url(job.get("url", ""))
+                    
                     insert_query = """
                     INSERT INTO job_applications (
                         title, company, location, url, description, requirements,
                         salary_range, status, match_score, ai_decision, ai_reasoning,
-                        created_at, updated_at
+                        source, created_at, updated_at
                     ) VALUES (
                         :title, :company, :location, :url, :description, :requirements,
                         :salary_range, 'found', :match_score, :ai_decision, :ai_reasoning,
-                        :created_at, :updated_at
+                        :source, :created_at, :updated_at
                     ) RETURNING id
                     """
 
@@ -477,6 +485,7 @@ async def search_all_indian_jobs(
                         "match_score": match_score,
                         "ai_decision": get_recommendation_from_score(match_score),
                         "ai_reasoning": f"REAL {source} job: {match_score}% compatibility",
+                        "source": job_source,
                         "created_at": datetime.utcnow(),
                         "updated_at": datetime.utcnow(),
                     }

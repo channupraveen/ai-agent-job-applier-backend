@@ -13,6 +13,7 @@ import asyncio
 
 from .auth import get_current_user
 from .models import get_job_db, UserProfile as User
+from .utils.source_extractor import extract_source_from_url
 
 router = APIRouter(tags=["Integration Management"])
 
@@ -573,15 +574,18 @@ async def perform_job_sync(source_id: str, source_name: str, user_id: int, db: S
                 existing = db.execute(text(existing_query), {"url": job.get("url", "")}).fetchone()
                 
                 if not existing and job.get("url"):
+                    # Extract source from URL
+                    job_source = extract_source_from_url(job.get("url", ""))
+                    
                     insert_query = """
                     INSERT INTO job_applications (
                         title, company, location, url, description, requirements,
                         salary_range, status, match_score, ai_decision, ai_reasoning,
-                        created_at, updated_at
+                        source, created_at, updated_at
                     ) VALUES (
                         :title, :company, :location, :url, :description, :requirements,
                         :salary_range, 'found', :match_score, :ai_decision, :ai_reasoning,
-                        :created_at, :updated_at
+                        :source, :created_at, :updated_at
                     )
                     """
                     
@@ -596,6 +600,7 @@ async def perform_job_sync(source_id: str, source_name: str, user_id: int, db: S
                         "match_score": 85 if source_id == "googlejobs" else 75,  # Higher score for Google Jobs API
                         "ai_decision": "apply" if source_id == "googlejobs" else "maybe",
                         "ai_reasoning": f"REAL {source_name} job sync: Found using criteria '{search_keywords}' in {search_locations}. Source: {job.get('source', 'API')}",
+                        "source": job_source,
                         "created_at": datetime.utcnow(),
                         "updated_at": datetime.utcnow()
                     }
@@ -2018,15 +2023,18 @@ async def perform_job_sync_with_config(source_id: str, source_name: str, user_id
                 existing = db.execute(text(existing_query), {"url": job.get("url", "")}).fetchone()
                 
                 if not existing and job.get("url"):
+                    # Extract source from URL
+                    job_source = extract_source_from_url(job.get("url", ""))
+                    
                     insert_query = """
                     INSERT INTO job_applications (
                         title, company, location, url, description, requirements,
                         salary_range, status, match_score, ai_decision, ai_reasoning,
-                        created_at, updated_at
+                        source, created_at, updated_at
                     ) VALUES (
                         :title, :company, :location, :url, :description, :requirements,
                         :salary_range, 'found', :match_score, :ai_decision, :ai_reasoning,
-                        :created_at, :updated_at
+                        :source, :created_at, :updated_at
                     )
                     """
                     
@@ -2041,6 +2049,7 @@ async def perform_job_sync_with_config(source_id: str, source_name: str, user_id
                         "match_score": 90,  # Higher score for custom config results
                         "ai_decision": "apply",
                         "ai_reasoning": f"Custom SerpAPI sync - Keywords: '{config.get('keywords')}', Location: '{preferred_location}' (from config), Max: {config.get('max_jobs_per_sync')}, WorkType: {'Remote' if config.get('ltype')==1 else 'All'}, Source: {job.get('source', 'Google Jobs API')}",
+                        "source": job_source,
                         "created_at": datetime.utcnow(),
                         "updated_at": datetime.utcnow()
                     }
