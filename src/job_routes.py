@@ -1423,3 +1423,105 @@ async def quick_apply_to_job(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error applying to job: {str(e)}"
         )
+
+
+# ===================================
+# APPLICATIONS ENDPOINT (NEW)
+# ===================================
+
+@router.get("/applications")
+async def list_applications(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    min_match_score: Optional[int] = Query(None, ge=0, le=100),
+    sort_by: str = Query("applied_at", regex="^(applied_at|created_at|match_score|title|company)$"),
+    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+    search: Optional[str] = Query(None),
+    response_received: Optional[bool] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db),
+):
+    """List job applications - ONLY jobs where user has applied"""
+    try:
+        # Build query - filter for ACTUAL APPLICATIONS
+        base_query = """
+        SELECT 
+            id, title, company, location, url, description, requirements,
+            salary_range, status, applied_at, response_received, response_date,
+            match_score, ai_decision, ai_reasoning, is_saved, created_at, updated_at, source
+        FROM job_applications
+        WHERE (status IN ('applied', 'interview', 'offer', 'rejected') OR applied_at IS NOT NULL)
+        """
+        
+        params = {}
+        conditions = []
+        
+        # Additional filters
+        if status:
+            conditions.append("status = :status")
+            params["status"] = status
+        
+        if min_match_score is not None:
+            conditions.append("match_score >= :min_match_score")
+            params["min_match_score"] = min_match_score
+        
+        if response_received is not None:
+            conditions.append("response_received = :response_received")
+            params["response_received"] = response_received
+        
+        if search:
+            conditions.append(
+                "(LOWER(title) LIKE LOWER(:search) OR LOWER(company) LIKE LOWER(:search))"
+            )
+            params["search"] = f"%{search}%"
+        
+        # Add conditions to query
+        if conditions:
+            base_query += " AND " + " AND ".join(conditions)
+        
+        # Get total count
+        count_query = f"SELECT COUNT(*) FROM ({base_query}) as count_subquery"
+        count_result = db.execute(text(count_query), params).fetchone()
+        total = count_result[0] if count_result else 0
+        
+        # Add sorting and pagination
+        final_query = f"""
+        {base_query}
+        ORDER BY {sort_by} {sort_order}
+        LIMIT :limit OFFSET :skip
+        """
+        
+        params.update({"limit": limit, "skip": skip})
+        
+        # Execute query
+        result = db.execute(text(final_query), params)
+        applications_data = result.fetchall()
+        
+        # Convert to application objects
+        applications = []
+        for row in applications_data:
+            app_dict = dict(row._mapping)
+            
+            # Format datetime fields
+            for date_field in ["applied_at", "response_date", "created_at", "updated_at"]:
+                if app_dict.get(date_field):
+                    app_dict[date_field] = app_dict[date_field].isoformat()
+            
+            applications.append(app_dict)
+        
+        return {
+            "success": True,
+            "applications": applications,
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+            "total_pages": (total + limit - 1) // limit,
+            "message": f"Retrieved {len(applications)} applications"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error listing applications: {str(e)}"
+        )

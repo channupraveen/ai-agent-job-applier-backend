@@ -92,18 +92,19 @@ async def start_application_process(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/applications")
-async def get_applications(current_user: UserProfile = Depends(get_current_user)):
-    """Get all job applications history"""
-    try:
-        agent = get_agent()
-        applications = agent.get_applications_history()
-        return {
-            "applications": applications,
-            "total": len(applications)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# DEPRECATED: Old applications endpoint - now using job_routes.py /applications
+# @router.get("/applications")
+# async def get_applications(current_user: UserProfile = Depends(get_current_user)):
+#     """Get all job applications history"""
+#     try:
+#         agent = get_agent()
+#         applications = agent.get_applications_history()
+#         return {
+#             "applications": applications,
+#             "total": len(applications)
+#         }
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/status")
 async def get_application_status(current_user: UserProfile = Depends(get_current_user)):
