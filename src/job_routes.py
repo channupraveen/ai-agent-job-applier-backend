@@ -1525,3 +1525,70 @@ async def list_applications(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error listing applications: {str(e)}"
         )
+
+
+@router.get("/applications/stats")
+async def get_application_stats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db),
+):
+    """Get application statistics for dashboard"""
+    try:
+        # Get stats for ACTUAL APPLICATIONS only
+        stats_query = """
+        SELECT 
+            COUNT(*) as total_applications,
+            COUNT(CASE WHEN status = 'found' THEN 1 END) as found,
+            COUNT(CASE WHEN status = 'analyzed' THEN 1 END) as analyzed,
+            COUNT(CASE WHEN status = 'applied' THEN 1 END) as applied,
+            COUNT(CASE WHEN status = 'interview' THEN 1 END) as interview,
+            COUNT(CASE WHEN status = 'offer' THEN 1 END) as offer,
+            COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected,
+            COUNT(CASE WHEN response_received = true THEN 1 END) as responses_received,
+            AVG(match_score) as avg_match_score
+        FROM job_applications
+        WHERE (status IN ('applied', 'interview', 'offer', 'rejected') OR applied_at IS NOT NULL)
+        """
+        
+        result = db.execute(text(stats_query))
+        stats_row = result.fetchone()
+        
+        if not stats_row:
+            return {
+                "success": True,
+                "total_applications": 0,
+                "found": 0,
+                "analyzed": 0,
+                "applied": 0,
+                "interview": 0,
+                "offer": 0,
+                "rejected": 0,
+                "avg_match_score": 0,
+                "response_rate": 0
+            }
+        
+        stats = dict(stats_row._mapping)
+        
+        # Calculate response rate
+        applied_count = stats.get("applied", 0) or 0
+        responses = stats.get("responses_received", 0) or 0
+        response_rate = round((responses / applied_count * 100), 1) if applied_count > 0 else 0
+        
+        return {
+            "success": True,
+            "total_applications": stats.get("total_applications", 0) or 0,
+            "found": stats.get("found", 0) or 0,
+            "analyzed": stats.get("analyzed", 0) or 0,
+            "applied": stats.get("applied", 0) or 0,
+            "interview": stats.get("interview", 0) or 0,
+            "offer": stats.get("offer", 0) or 0,
+            "rejected": stats.get("rejected", 0) or 0,
+            "avg_match_score": round(stats.get("avg_match_score", 0) or 0, 1),
+            "response_rate": response_rate
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting application stats: {str(e)}"
+        )
