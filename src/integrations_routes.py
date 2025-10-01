@@ -2,7 +2,7 @@
 Job Source Integration Management API Routes - FIXED VERSION
 """
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, status
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
@@ -2251,3 +2251,229 @@ async def debug_serpapi_response(
 
 # NOTE: simulate_googlejobs_search function REMOVED
 # Google Jobs now uses ONLY SerpAPI - no simulation fallback
+
+
+# ===================================
+# JOB SOURCE CREDENTIALS ENDPOINTS
+# ===================================
+
+@router.get("/integrations/available-sources")
+async def get_available_job_sources(
+    current_user: User = Depends(get_current_user)
+):
+    """Get list of all supported job sources for credentials management"""
+    
+    sources = [
+        {
+            "id": "linkedin",
+            "name": "LinkedIn",
+            "icon": "pi pi-linkedin",
+            "description": "Professional networking platform - Most jobs available",
+            "requires_auth": True,
+            "status": "active"
+        },
+        {
+            "id": "naukri",
+            "name": "Naukri.com",
+            "icon": "pi pi-briefcase",
+            "description": "India's #1 job portal - Connect for auto-apply",
+            "requires_auth": True,
+            "status": "active"
+        },
+        {
+            "id": "indeed",
+            "name": "Indeed",
+            "icon": "pi pi-search",
+            "description": "Global job search engine - 14+ jobs available",
+            "requires_auth": True,
+            "status": "active"
+        },
+        {
+            "id": "glassdoor",
+            "name": "Glassdoor",
+            "icon": "pi pi-building",
+            "description": "Jobs & company reviews - 9+ jobs available",
+            "requires_auth": True,
+            "status": "active"
+        }
+    ]
+    
+    return {
+        "success": True,
+        "sources": sources,
+        "total": len(sources)
+    }
+
+
+@router.get("/integrations/connected-sources")
+async def get_connected_sources(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db)
+):
+    """Get user's connected job sources with credentials"""
+    
+    query = """
+    SELECT platform, email, is_active, last_verified, created_at
+    FROM job_site_credentials
+    WHERE user_id = :user_id
+    """
+    
+    result = db.execute(text(query), {"user_id": current_user.id})
+    connected = []
+    
+    for row in result.fetchall():
+        cred = dict(row._mapping)
+        cred['created_at'] = cred['created_at'].isoformat() if cred['created_at'] else None
+        cred['last_verified'] = cred['last_verified'].isoformat() if cred['last_verified'] else None
+        connected.append(cred)
+    
+    return {
+        "success": True,
+        "connected_sources": connected,
+        "total": len(connected)
+    }
+
+
+class CredentialsRequest(BaseModel):
+    platform: str
+    email: str
+    password: str
+
+
+@router.post("/integrations/credentials")
+async def save_job_site_credentials(
+    credentials: CredentialsRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db)
+):
+    """Save job site credentials (encrypted)"""
+    try:
+        # Import encryption utilities
+        from cryptography.fernet import Fernet
+        import os
+        import base64
+        
+        # Get or create encryption key (in production, use env variable)
+        encryption_key = os.getenv('CREDENTIALS_ENCRYPTION_KEY')
+        if not encryption_key:
+            # Generate a key for demo (in production, this should be stored securely)
+            encryption_key = Fernet.generate_key().decode()
+            print(f"⚠️ Warning: Using generated encryption key. Set CREDENTIALS_ENCRYPTION_KEY in production!")
+        
+        # Encrypt password
+        cipher = Fernet(encryption_key.encode() if isinstance(encryption_key, str) else encryption_key)
+        encrypted_password = cipher.encrypt(credentials.password.encode()).decode()
+        
+        # Check if credentials already exist
+        check_query = """
+        SELECT id FROM job_site_credentials 
+        WHERE user_id = :user_id AND platform = :platform
+        """
+        
+        existing = db.execute(text(check_query), {
+            "user_id": current_user.id,
+            "platform": credentials.platform
+        }).fetchone()
+        
+        if existing:
+            # Update existing credentials
+            update_query = """
+            UPDATE job_site_credentials 
+            SET email = :email, 
+                password_encrypted = :password_encrypted,
+                updated_at = :updated_at
+            WHERE user_id = :user_id AND platform = :platform
+            RETURNING id
+            """
+            
+            result = db.execute(text(update_query), {
+                "user_id": current_user.id,
+                "platform": credentials.platform,
+                "email": credentials.email,
+                "password_encrypted": encrypted_password,
+                "updated_at": datetime.utcnow()
+            })
+            
+            message = f"{credentials.platform} credentials updated successfully"
+        else:
+            # Insert new credentials
+            insert_query = """
+            INSERT INTO job_site_credentials (
+                user_id, platform, email, password_encrypted, 
+                is_active, created_at, updated_at
+            ) VALUES (
+                :user_id, :platform, :email, :password_encrypted,
+                true, :created_at, :updated_at
+            )
+            RETURNING id
+            """
+            
+            result = db.execute(text(insert_query), {
+                "user_id": current_user.id,
+                "platform": credentials.platform,
+                "email": credentials.email,
+                "password_encrypted": encrypted_password,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            })
+            
+            message = f"{credentials.platform} credentials saved successfully"
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": message,
+            "platform": credentials.platform
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error saving credentials: {str(e)}"
+        )
+
+
+@router.delete("/integrations/credentials/{platform}")
+async def remove_credentials(
+    platform: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_job_db)
+):
+    """Remove job site credentials"""
+    try:
+        delete_query = """
+        DELETE FROM job_site_credentials
+        WHERE user_id = :user_id AND platform = :platform
+        RETURNING id
+        """
+        
+        result = db.execute(text(delete_query), {
+            "user_id": current_user.id,
+            "platform": platform
+        })
+        
+        deleted = result.fetchone()
+        
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No credentials found for {platform}"
+            )
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"{platform} credentials removed successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error removing credentials: {str(e)}"
+        )
