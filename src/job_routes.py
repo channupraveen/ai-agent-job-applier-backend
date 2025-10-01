@@ -448,7 +448,7 @@ async def search_jobs(
             ja.id, ja.title, ja.company, ja.location, ja.url, ja.description,
             ja.requirements, ja.salary_range, ja.status, ja.applied_at,
             ja.response_received, ja.response_date, ja.match_score, ja.ai_decision,
-            ja.ai_reasoning, ja.created_at, ja.updated_at
+            ja.ai_reasoning, ja.created_at, ja.updated_at, ja.source
         FROM job_applications ja
         WHERE 1=1
         """
@@ -573,7 +573,7 @@ async def get_job_details(
             ja.id, ja.title, ja.company, ja.location, ja.url, ja.description,
             ja.requirements, ja.salary_range, ja.status, ja.applied_at,
             ja.response_received, ja.response_date, ja.match_score, ja.ai_decision,
-            ja.ai_reasoning, ja.created_at, ja.updated_at
+            ja.ai_reasoning, ja.created_at, ja.updated_at, ja.source
         FROM job_applications ja
         WHERE ja.id = :job_id
         """
@@ -783,7 +783,7 @@ async def get_job_recommendations(
             ja.description, ja.requirements, ja.salary_range,
             ja.match_score, ja.ai_decision, ja.ai_reasoning,
             ja.status, ja.applied_at, ja.created_at, ja.is_saved,
-            ja.job_type, ja.experience_level, ja.company_logo
+            ja.job_type, ja.experience_level, ja.company_logo, ja.source
         FROM job_applications ja
         WHERE ja.match_score >= :match_threshold
         """
@@ -885,7 +885,7 @@ async def get_detailed_recommendations(
         SELECT 
             id, title, company, location, url, description, requirements,
             salary_range, match_score, ai_decision, ai_reasoning,
-            status, created_at, is_saved, job_type, experience_level, company_logo
+            status, created_at, is_saved, job_type, experience_level, company_logo, source
         FROM job_applications
         WHERE match_score >= :match_threshold
         AND applied_at IS NULL
@@ -961,6 +961,7 @@ async def get_detailed_recommendations(
                 "company_logo": job.get("company_logo"),
                 "job_type": job.get("job_type"),
                 "experience_level": job.get("experience_level"),
+                "source": job.get("source"),
                 "skills_matched": skills_matched[:10],  # Limit to top 10
                 "skills_missing": skills_missing[:5],   # Limit to top 5
                 "match_reasons": match_reasons,
@@ -1265,7 +1266,7 @@ async def list_all_jobs(
         SELECT 
             id, title, company, location, url, description, requirements,
             salary_range, status, applied_at, response_received, response_date,
-            match_score, ai_decision, ai_reasoning, is_saved, created_at, updated_at
+            match_score, ai_decision, ai_reasoning, is_saved, created_at, updated_at, source
         FROM job_applications
         WHERE 1=1
         """
